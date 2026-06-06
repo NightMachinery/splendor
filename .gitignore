@@ -128,7 +128,8 @@ target/
 *.iml
 .idea/
 dist/
-docs/
+docs/*
+!docs/self-hosting.md
 server/docs/
 
 saves/

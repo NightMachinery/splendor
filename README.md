@@ -1,8 +1,5 @@
 # Splendor
-An online multiplayer web-based implementation of the strategy game Splendor.
-
-[![Frontend Tests](https://github.com/hexanome-04/splendor/actions/workflows/playwright.yml/badge.svg?branch=master)](https://github.com/hexanome-04/splendor/actions/workflows/playwright.yml)
-![Build with Maven](https://github.com/hexanome-04/splendor/actions/workflows/build-backend.yml/badge.svg?branch=master)
+An online multiplayer web-based implementation of the strategy game Splendor, adapted for local self-hosting.
 
 ## Features
  * Splendor with Orient Expansion
@@ -15,43 +12,21 @@ An online multiplayer web-based implementation of the strategy game Splendor.
 
 ## Getting Started
 
-If you wish to only set up the game so that you may play it, see the instructions for setting up [here](#setup).
+For self-hosting without Docker, see [docs/self-hosting.md](docs/self-hosting.md).
 
 See [here](setup/readme.md) if you wish to develop the frontend/backend.
 
 ## Setup
 
-### Prerequisites
+### Self-hosting
 
-Ensure that you have all the necessary dependencies installed:
-  * [Docker](https://www.docker.com/)
-  * Git
-
-Ensure that the docker engine is up and running.
-
-The LobbyService submodule must be initialized.
-Execute the following commands in the root of the project.
+Use the non-Docker self-hosting helper:
 
 ```bash
-git submodule init
-git submodule update
+./self_host.py setup
 ```
 
-From the root of the project, navigate to the `has-server-client` directory.
-```bash
-cd setup/has-server-client
-```
-
-Start up the services using docker compose.
-```bash
-docker compose up --build
-```
-Note: The “--build” argument is necessary to ensure that the docker containers are up to date.
-Optionally, you may add the “-d” argument to launch all the services detached.
-
-### Playing
-
-Once all the services are up and running, you can then navigate to [localhost:36104](http://localhost:36104) to start playing.
+The default URL is `https://splendor.pinky.lilf.ir`; pass `--url` to use another absolute HTTP or HTTPS URL. See [docs/self-hosting.md](docs/self-hosting.md) for details.
 
 ## Gameplay
 
@@ -78,13 +53,4 @@ Every player should click on "Play" to show the game board.
 ![taketurn](https://user-images.githubusercontent.com/17598972/229967691-fcfe0cb8-6931-40de-8de5-df8660833f57.gif)
 
 During your turn, you may either take tokens according to game rules, purchase a card, or reserve a card. As the game progresses, additional actions may be unlocked and automatically added to your turn.
-
-## Authors
-
- * [Alex Lai](https://github.com/sandpipes)
- * [Alexa Vasilakos](https://github.com/itsAlexa)
- * [Chen Jun Chi](https://github.com/MosinLover)
- * [Jia Lin Sun](https://github.com/Lobo808)
- * [Richard Rassokhine](https://github.com/richardrxn)
- * [Sarah Youinou](https://github.com/syouinou)
 
