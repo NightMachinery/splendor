@@ -20,19 +20,27 @@ const INTERNAL_SETTINGS = {
      * Null if custom endpoint not set.
      */
     GS_API: "",
-    DEFAULT_GS_PORT: 33402,
 
     /**
      * Location for access to the Lobby Service.
      * Null if custom endpoint not set.
      */
     LS_API: "",
-    DEFAULT_LS_PORT: 34172,
 };
 
 /**
  * Define the settings.
  */
+
+const getRoomMigrateToken = () => {
+    const params = new URL(document.location.toString()).searchParams;
+    return params.get("migrate");
+};
+
+const getRoomId = () => {
+    const params = new URL(document.location.toString()).searchParams;
+    return params.get("sessionId");
+};
 
 export const SETTINGS = {
 
@@ -60,7 +68,7 @@ export const SETTINGS = {
             return INTERNAL_SETTINGS.GS_API;
         }
 
-        return `${window.location.protocol}//${window.location.hostname}:${INTERNAL_SETTINGS.DEFAULT_GS_PORT}`
+        return `${window.location.origin}/gs`
     },
 
     /**
@@ -87,7 +95,7 @@ export const SETTINGS = {
             return INTERNAL_SETTINGS.LS_API;
         }
 
-        return `${window.location.protocol}//${window.location.hostname}:${INTERNAL_SETTINGS.DEFAULT_LS_PORT}`
+        return `${window.location.origin}/ls`
     },
 
     /**
@@ -95,10 +103,7 @@ export const SETTINGS = {
      * @returns string | null
      */
     getAccessToken: () => {
-        // can add check here to ensure that there's an access token
-        // if not, can boot client to login screen if expired or just not theree
-
-        return localStorage.getItem("accessToken");
+        return getRoomMigrateToken() || localStorage.getItem("accessToken");
     },
 
     /**
@@ -130,6 +135,11 @@ export const SETTINGS = {
      * @returns string | null
      */
     getUsername: () => {
+        const roomToken = getRoomMigrateToken();
+        const roomId = getRoomId();
+        if(roomToken && roomId) {
+            return sessionStorage.getItem(`roomUser:${roomId}:${roomToken}`) || localStorage.getItem("username");
+        }
         return localStorage.getItem("username");
     },
     
@@ -166,40 +176,7 @@ export const SETTINGS = {
      * @returns string | null - returns access token
      */
     refreshAccessToken: async () => {
-        const rt = SETTINGS.getRefreshToken();
-
-        // nothing stored
-        if(!rt) {
-            return null;
-        }
-
-        const params = {
-            "grant_type": "refresh_token",
-            "refresh_token": rt
-        };
-        const url = new URL(`${SETTINGS.getLS_API()}/oauth/token`);
-        url.search = new URLSearchParams(params).toString();
-
-        const headers = new Headers();
-        headers.set("Authorization", `Basic ${btoa("bgp-client-name:bgp-client-pw")}`);
-
-        var newAT = "";
-        try {
-            const resp = await fetch(url, { method: "POST", headers: headers });
-
-            if(!resp.ok) throw new Error("not ok: " + resp.statusText);
-
-            const data = await resp.json();
-
-            SETTINGS.setAccessToken(data.access_token);
-            SETTINGS.setRefreshToken(data.refresh_token);
-            newAT = data.access_token;
-
-        } catch(e) {
-            return null;
-        }
-
-        return newAT;
+        return SETTINGS.getAccessToken();
     },
 
     /**
@@ -215,21 +192,44 @@ export const SETTINGS = {
      * Will boot user to login screen if not.
      */
     verifyCredentials: async () => {
-        // no token
-        try {
-            const username = await SETTINGS.fetchUsername();
-            if(!username && !(await SETTINGS.refreshAccessToken())) {
-                SETTINGS.goToLogin();
+        const roomToken = getRoomMigrateToken();
+        const roomId = getRoomId();
+        if(roomToken && roomId) {
+            const resp = await fetch(`${SETTINGS.getLS_API()}/api/sessions/${roomId}/migrate/${roomToken}`);
+            if(resp.ok) {
+                const data = await resp.json();
+                sessionStorage.setItem(`roomUser:${roomId}:${roomToken}`, data.name);
                 return;
             }
-        } catch(err) {
+        }
+
+        let token = localStorage.getItem("accessToken");
+        if(!token) {
+            const bytes = new Uint8Array(24);
+            window.crypto.getRandomValues(bytes);
+            token = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+            SETTINGS.setAccessToken(token);
+        }
+
+        let displayName = localStorage.getItem("displayName");
+        if(!displayName) {
+            displayName = window.prompt("Choose a display name", "Player") || "Player";
+            localStorage.setItem("displayName", displayName);
+        }
+
+        const resp = await fetch(`${SETTINGS.getLS_API()}/api/local-auth`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ token, displayName })
+        });
+        if(!resp.ok) {
             SETTINGS.goToLogin();
             return;
         }
-
-        // now set username again
-        const username = await SETTINGS.fetchUsername();
-        SETTINGS.setUsername(username);
+        const data = await resp.json();
+        SETTINGS.setAccessToken(data.token);
+        SETTINGS.setUsername(data.username);
+        localStorage.setItem("displayName", data.displayName);
     },
 
     /**
@@ -239,6 +239,7 @@ export const SETTINGS = {
         localStorage.removeItem("username");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("accessToken");
+        localStorage.removeItem("displayName");
     },
 };
 

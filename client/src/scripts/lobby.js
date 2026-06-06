@@ -2,10 +2,10 @@ import { SETTINGS, GAME_VERSION_TO_BOARD } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
+import { copyText } from "./clipboard.js";
 
 // perhaps we need a better build system
-// eslint-disable-next-line no-undef
-var MD5 = CryptoJS.MD5;
+import { hashText } from "./local-md5.js";
 
 /**
  * Creates a new session with the specified game version and save id.
@@ -212,6 +212,53 @@ document.addEventListener("DOMContentLoaded", () => {
         }).catch((err) => console.log("Error while launching: " + err));
     };
 
+
+    const copyMigrateLink = async (elm, ses) => {
+        const row = elm.closest("tr[session-id]");
+        const sessionId = row.getAttribute("session-id");
+        let player = SETTINGS.getUsername();
+        if((ses.mods || []).includes(player)) {
+            player = window.prompt("Player id to migrate", ses.players.join(", ")) || player;
+            if(player.includes(",")) player = player.split(",")[0].trim();
+        }
+        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${player}/migrate-token`);
+        url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken() }).toString();
+        const resp = await fetch(url, { method: "POST" });
+        if(!resp.ok) {
+            showError(await resp.text());
+            return;
+        }
+        const migrate = await resp.text();
+        const version = row.getAttribute("version");
+        const link = `${window.location.origin}/${GAME_VERSION_TO_BOARD[version]}/?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`;
+        await copyText(link);
+    };
+
+
+    const modPromptPlayer = (ses) => window.prompt("Player id", ses.players.join(", ")) || "";
+
+    const toggleObserver = async (elm, ses) => {
+        const player = modPromptPlayer(ses);
+        if(!player) return;
+        const observer = !(ses.observers || []).includes(player);
+        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
+        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${player}/observer`);
+        url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken(), observer }).toString();
+        const resp = await fetch(url, { method: "POST" });
+        if(!resp.ok) showError(await resp.text());
+    };
+
+    const toggleMod = async (elm, ses) => {
+        const player = modPromptPlayer(ses);
+        if(!player) return;
+        const mod = !(ses.mods || []).includes(player);
+        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
+        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${player}/mod`);
+        url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken(), mod }).toString();
+        const resp = await fetch(url, { method: "POST" });
+        if(!resp.ok) showError(await resp.text());
+    };
+
     const playSession = (elm, sesId, gameVer) => {
         elm.disabled = true;
 
@@ -222,6 +269,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Related to checking sessions that user can join
     var availableSessionHash = "-";
+
+
+    const formatSessionPlayers = (ses) => {
+        const aliases = ses.displayNames || {};
+        const observers = ses.observers || [];
+        return ses.players.map(p => `${aliases[p] || p}${p === SETTINGS.getUsername() ? " (you)" : ""}${observers.includes(p) ? " [observer]" : ""}`).join(", ");
+    };
 
     function updateAvailableSessions(data) {
         // first remove any sessions that don't need to be shown anymore (if currently shown)
@@ -265,6 +319,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 node.removeAttribute("joined");
             }
 
+            if((ses.mods || []).includes(username)) {
+                node.setAttribute("mod", "true");
+            } else {
+                node.removeAttribute("mod");
+            }
+
             if(ses.creator === username) {
                 node.setAttribute("created", "true");
 
@@ -305,7 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const sesPlayers = ses.players;
             const curP = ses.players.length;
             const maxP = ses.gameParameters.maxSessionPlayers;
-            trNode.querySelector(".session-players-info").textContent = `[${curP}/${maxP}]: ${sesPlayers.join(", ")}`;
+            trNode.querySelector(".session-players-info").textContent = `[${curP}/${maxP}]: ${formatSessionPlayers(ses)}`;
 
             setAttributes(ses, trNode);
 
@@ -316,12 +376,18 @@ document.addEventListener("DOMContentLoaded", () => {
             const launchBtn = tempNode.querySelector(".launch-btn.ses-btn");
             const playBtn = tempNode.querySelector(".play-btn.ses-btn");
             const spectateBtn = tempNode.querySelector(".spectate-btn.ses-btn");
+            const migrateBtn = tempNode.querySelector(".migrate-btn.ses-btn");
+            const observerBtn = tempNode.querySelector(".observer-btn.ses-btn");
+            const modBtn = tempNode.querySelector(".mod-btn.ses-btn");
             delBtn.onclick = () => { deleteSession(delBtn); };
             leaveBtn.onclick = () => { leaveSession(leaveBtn); };
             joinBtn.onclick = () => { joinSession(joinBtn); };
             launchBtn.onclick = () => { launchSession(launchBtn); };
             playBtn.onclick = () => playSession(playBtn, sesId, gameVer);
             spectateBtn.onclick = () => playSession(spectateBtn, sesId, gameVer);
+            migrateBtn.onclick = () => copyMigrateLink(migrateBtn, ses);
+            observerBtn.onclick = () => toggleObserver(observerBtn, ses);
+            modBtn.onclick = () => toggleMod(modBtn, ses);
 
             tbl.appendChild(tempNode);
 
@@ -351,7 +417,7 @@ document.addEventListener("DOMContentLoaded", () => {
             setAttributes(ses, trNode);
 
             const node = document.querySelector(`${tableSel} tr[session-id="${sesId}"] .session-players-info`);
-            const newText = `[${curP}/${maxP}]: ${sesPlayers.join(", ")}`;
+            const newText = `[${curP}/${maxP}]: ${formatSessionPlayers(ses)}`;
             if(node.textContent !== newText) {
                 node.textContent = newText;
             }
@@ -372,7 +438,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         fetch(url, {
             method: "GET",
-        }).then((resp) => resp.text()).then((t) => {
+        }).then((resp) => resp.text()).then(async (t) => {
             // console.log("Received available sessions update");
             var data = {};
             try {
@@ -384,7 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // update hash
             // console.log("Update: " + t);
-            const newHash = MD5(t);
+            const newHash = await hashText(t);
 
             // update only if needed
             if(newHash !== availableSessionHash) {

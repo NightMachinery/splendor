@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Charm:wght@400;700&family=Judson:ital,wght@0,400;0,700;1,400&display=swap');
-
 * {
   margin: 0;
   padding: 0;
@@ -608,4 +606,32 @@ tr > th {
 .is-service .game-selection-dropdown {
   visibility: hidden;
   pointer-events: none;
+}
+
+.current-sessions-table .icon-btn {
+  border: 0;
+  background: #4b5563;
+  width: 2.2em;
+  height: 2.2em;
+  padding: 0.35em;
+  align-items: center;
+  justify-content: center;
+}
+
+.current-sessions-table .icon-btn svg {
+  width: 1.2em;
+  height: 1.2em;
+  fill: currentColor;
+}
+
+.current-sessions-table tr:is([joined]) .migrate-btn {
+  display: inline-flex;
+}
+
+.current-sessions-table tr:not([mod]) .mod-only {
+  display: none !important;
+}
+
+.current-sessions-table tr[mod] .mod-only {
+  display: inline-flex;
 }

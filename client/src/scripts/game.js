@@ -7,8 +7,7 @@ import { runDelayed } from "./animation/utils";
 import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
 
-// eslint-disable-next-line no-undef
-var MD5 = CryptoJS.MD5;
+import { hashText } from "./local-md5.js";
 
 const updateTokensCount = (parentSelector, tokenInfo, bonusInfo = null) => {
     const parentNode = document.querySelector(parentSelector);
@@ -325,7 +324,7 @@ const updateGameboard = async () => {
 
     // update hash
     // console.log("Update: " + t);
-    const newHash = MD5(dataText);
+    const newHash = await hashText(dataText);
 
     // update only if needed
     if(newHash === gameStateHash) {
