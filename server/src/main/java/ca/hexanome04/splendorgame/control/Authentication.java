@@ -47,6 +47,9 @@ public class Authentication {
      * @return token with administrative-privileges
      */
     public String getToken() {
+        if (password != null && password.startsWith("selfhost_")) {
+            return password;
+        }
         HttpHeaders headers = new HttpHeaders();
         headers.setBasicAuth("bgp-client-name", "bgp-client-pw");
         HttpEntity<String> httpEntity = new HttpEntity<>(headers);
@@ -166,6 +169,27 @@ public class Authentication {
         return true;
     }
 
+    private String getRoomTokenName(String token) {
+        // Room tokens are resolved by the lobby service's /oauth/username endpoint and never expose
+        // the user's primary auth token.
+        URI uri = UriComponentsBuilder.fromHttpUrl(lsLocation)
+                .path("/oauth/username")
+                .queryParam("access_token", URLEncoder.encode(token, StandardCharsets.UTF_8))
+                .build(true).toUri();
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    uri,
+                    HttpMethod.GET,
+                    null,
+                    String.class
+            );
+            return response.getBody();
+        } catch (HttpStatusCodeException e) {
+            return "";
+        }
+    }
+
     /**
      * Retrieve the name associated with the token.
      *
@@ -173,6 +197,9 @@ public class Authentication {
      * @return name associated with token
      */
     public String getNameFromToken(String token) {
+        if (token != null && token.startsWith("room_")) {
+            return getRoomTokenName(token);
+        }
         URI uri = UriComponentsBuilder.fromHttpUrl(lsLocation)
                 .path("/oauth/username")
                 // Spring boot makes '+' disappear if you do not encode them.
