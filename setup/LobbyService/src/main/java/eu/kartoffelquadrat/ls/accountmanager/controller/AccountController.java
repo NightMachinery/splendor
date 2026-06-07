@@ -138,7 +138,8 @@ public class AccountController {
   @PostMapping(value = "/api/users/{name}/password", consumes = "application/json; charset=utf-8")
   public ResponseEntity updatePassword(@PathVariable String name,
                                        @RequestBody PasswordForm passwordForm,
-                                       Principal principal) {
+                                       Principal principal,
+                                       @RequestParam("access_token") String token) {
     // Verify the user exists
       if (!playerRepository.existsById(name)) {
           return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -189,7 +190,7 @@ public class AccountController {
   @PreAuthorize("hasAnyAuthority('ROLE_PLAYER','ROLE_ADMIN')")
   @PostMapping(value = "/api/users/{name}/colour", consumes = "application/json; charset=utf-8")
   public ResponseEntity updateColour(@PathVariable String name, @RequestBody ColourForm colourForm,
-                                     Principal principal) {
+                                     Principal principal, @RequestParam("access_token") String token) {
     // Verify the user exists
       if (!playerRepository.existsById(name)) {
           return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -224,7 +225,8 @@ public class AccountController {
    */
   @PreAuthorize("hasAnyAuthority('ROLE_PLAYER','ROLE_ADMIN')")
   @GetMapping(value = "/api/users/{name}/colour", produces = "application/json; charset=utf-8")
-  public ResponseEntity getPreferredColour(@PathVariable String name, Principal principal) {
+  public ResponseEntity getPreferredColour(@PathVariable String name, Principal principal,
+                                           @RequestParam("access_token") String token) {
     // Verify the user exists
       if (!playerRepository.existsById(name)) {
           return ResponseEntity.status(HttpStatus.BAD_REQUEST)
