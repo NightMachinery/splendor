@@ -54,6 +54,19 @@ Self-hosted auth is local and intranet-friendly. The browser stores a random aut
 
 No external captcha or Google service is required.
 
+
+## Player recovery and moderation
+
+The self-hosted lobby exposes player management without requiring typed internal IDs. In the lobby, expand a session's **Players / Moderation** panel to see server-provided display aliases, internal IDs on hover, and badges for the current user, owner/mod/temp-mod, and observers.
+
+Allowed actions appear as icon buttons next to each player:
+
+- Copy a migrate link for yourself, or for any player if you are a moderator. The link opens the board as that room identity and is useful after browser storage is cleared or a device changes.
+- Move yourself back from observer to player. Moderators can also move other players between player and observer status.
+- Promote players to moderator. Demoting moderators remains restricted to the session creator by the LobbyService.
+
+The same badges and moderation buttons are also shown on player panels in launched game boards, so creators and moderators can recover or adjust players after the game starts. Non-moderators only see actions the backend already allows for their own identity.
+
 ## Development
 
 Use `dev-start` while changing client code. It leaves the Java services running in tmux and proxies the frontend through Caddy to Astro, so HMR works through the configured URL.

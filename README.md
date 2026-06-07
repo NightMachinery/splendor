@@ -50,6 +50,8 @@ The creator can launch the game once enough players have gathered.
 
 Every player should click on "Play" to show the game board.
 
+Creators and moderators can use the lobby **Players / Moderation** panel, and matching controls on launched boards, to copy player migrate links, move observers back into seats, and manage moderators without typing player IDs.
+
 ![taketurn](https://user-images.githubusercontent.com/17598972/229967691-fcfe0cb8-6931-40de-8de5-df8660833f57.gif)
 
 During your turn, you may either take tokens according to game rules, purchase a card, or reserve a card. As the game progresses, additional actions may be unlocked and automatically added to your turn.
