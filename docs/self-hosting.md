@@ -54,6 +54,8 @@ Self-hosted auth is local and intranet-friendly. The browser stores a random aut
 
 No external captcha, Google service, or password entry is required for normal self-hosted play. The account settings page keeps colour/account controls but hides password controls, and the shared nav intentionally omits logout to avoid accidentally discarding the local browser identity.
 
+The login page redirects back to the homepage when a local identity already exists. UI error toasts are also mirrored to the browser console for easier copy/paste debugging.
+
 
 ## Generated profile avatars
 
