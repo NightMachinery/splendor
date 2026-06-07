@@ -100,18 +100,27 @@ public class Initializer {
             try {
                 // attempt to register all game versions
                 for (GameServiceInfo gameServiceInfo : this.gameServices) {
-                    if (checkRegistered(gameServiceInfo).getStatusCode().is2xxSuccessful()) {
+                    ResponseEntity checkResp = null;
+                    try {
+                        checkResp = checkRegistered(gameServiceInfo);
+                    } catch (RestClientException e) {
+                        logger.warn("Could not check registration for game service ({}); will attempt registration anyway: {}",
+                                gameServiceInfo.displayName(), e.toString());
+                    }
+                    if (checkResp != null && checkResp.getStatusCode().is2xxSuccessful()) {
                         logger.info("Game service ({}) already registered.", gameServiceInfo.displayName());
                         unregister(gameServiceInfo);
                     }
 
                     ResponseEntity regResp = attemptRegister(gameServiceInfo);
                     if (!regResp.getStatusCode().is2xxSuccessful()) {
-                        throw new RestClientException(regResp.getBody().toString());
+                        throw new RestClientException("Registration failed for " + gameServiceInfo.name()
+                                + " with status " + regResp.getStatusCodeValue()
+                                + ": " + String.valueOf(regResp.getBody()));
                     }
                 }
             } catch (RestClientException e) {
-                logger.debug(e.toString());
+                logger.warn("Game service registration attempt {}/{} failed: {}", retries + 1, maxRetries, e.toString());
                 retries++;
                 continue;
             }
