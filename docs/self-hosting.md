@@ -50,10 +50,14 @@ If the configured URL is HTTPS, the script adds an explicit HTTP→HTTPS redirec
 
 ## Authentication
 
-Self-hosted auth is local and intranet-friendly. The browser stores a random auth token in `localStorage`; the LobbyService associates that token with the user's display name so the user is not prompted again on refresh.
+Self-hosted auth is local and intranet-friendly. The browser stores a random auth token and display name in `localStorage`; the LobbyService associates that token with the user's display name so the user is not prompted again on refresh. If the browser has no local display name, protected pages redirect straight to the display-name login page instead of showing an in-page prompt.
 
-No external captcha or Google service is required.
+No external captcha, Google service, or password entry is required for normal self-hosted play. The account settings page keeps colour/account controls but hides password controls, and the shared nav intentionally omits logout to avoid accidentally discarding the local browser identity.
 
+
+## Generated profile avatars
+
+Player profile icons are generated locally in the browser from the room identity using `nice-avatar-svg`, so profile pictures do not rely on external avatar services and remain stable for the same local account.
 
 ## Player recovery and moderation
 
