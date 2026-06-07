@@ -108,7 +108,13 @@ public class Session implements BroadcastContent {
     }
 
     public Map<String, String> getDisplayNames() {
-        return Collections.unmodifiableMap(displayAliases);
+        Map<String, String> currentAliases = new LinkedHashMap<>();
+        for (String player : players) {
+            if (displayAliases.containsKey(player)) {
+                currentAliases.put(player, displayAliases.get(player));
+            }
+        }
+        return Collections.unmodifiableMap(currentAliases);
     }
 
     public Set<String> getObservers() {
@@ -139,9 +145,23 @@ public class Session implements BroadcastContent {
     }
 
     private void rebuildAliases() {
-        displayAliases.clear();
         Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String alias : displayAliases.values()) {
+            String base = alias.replaceFirst(" \\d+$", "");
+            Integer suffix = 1;
+            if (!alias.equals(base)) {
+                try {
+                    suffix = Integer.parseInt(alias.substring(base.length() + 1));
+                } catch (NumberFormatException ignored) {
+                    suffix = 1;
+                }
+            }
+            counts.put(base, Math.max(counts.getOrDefault(base, 0), suffix));
+        }
         for (String player : players) {
+            if (displayAliases.containsKey(player)) {
+                continue;
+            }
             String base = displayNames.getOrDefault(player, player);
             int next = counts.getOrDefault(base, 0) + 1;
             counts.put(base, next);
@@ -241,7 +261,6 @@ public class Session implements BroadcastContent {
         observers.remove(player);
         mods.remove(player);
         tempMods.remove(player);
-        rebuildAliases();
     }
 
     public GameServerParameters getGameParameters() {
