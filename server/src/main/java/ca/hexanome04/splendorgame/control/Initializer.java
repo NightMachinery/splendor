@@ -94,7 +94,7 @@ public class Initializer {
      */
     public void registerWithLobbyService() {
         boolean registered = false;
-        int maxRetries = 5;
+        int maxRetries = 60;
         int retries = 0;
         while (retries < maxRetries && !registered) {
             try {
@@ -122,6 +122,12 @@ public class Initializer {
             } catch (RestClientException e) {
                 logger.warn("Game service registration attempt {}/{} failed: {}", retries + 1, maxRetries, e.toString());
                 retries++;
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
                 continue;
             }
 

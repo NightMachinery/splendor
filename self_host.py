@@ -6,6 +6,8 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -26,6 +28,20 @@ def run(cmd, cwd=ROOT, env=None):
 
 def output(cmd):
     return subprocess.check_output(cmd, text=True).strip()
+
+
+def wait_for_http(url, label, timeout=180):
+    deadline = time.time() + timeout
+    last_error = None
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                if 200 <= resp.status < 500:
+                    return
+        except Exception as exc:
+            last_error = exc
+        time.sleep(1)
+    raise SystemExit(f"Timed out waiting for {label} at {url}: {last_error}")
 
 def tmux_kill(name):
     subprocess.run(["tmux", "kill-session", "-t", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -132,6 +148,7 @@ def start(args, dev=False):
     lsjar = ROOT / "setup" / "LobbyService" / "target" / "ls.jar"
     gsjar = ROOT / "server" / "target" / "splendorGame.jar"
     tmux_new(SESSIONS["lobby"], f"java -jar {shq(lsjar)} --server.port={PORTS['lobby']} --api.games.url=/api/sessions/ --spring.profiles.active=sqlite", extra_env=common)
+    wait_for_http(f"http://127.0.0.1:{PORTS['lobby']}/api/online", "Lobby service")
     tmux_new(SESSIONS["game"], f"java -jar {shq(gsjar)} --server.port={PORTS['game']} --LS.location=http://127.0.0.1:{PORTS['lobby']} --LS.server.password=selfhost_service_token --gs.location=http://127.0.0.1:{PORTS['game']} --save.location={shq(DATA / 'saves')}")
     if dev:
         tmux_new(SESSIONS["dev"], "pnpm dev --host 127.0.0.1 --port 3000", cwd=ROOT / "client")

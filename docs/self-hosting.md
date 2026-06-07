@@ -33,6 +33,8 @@ Default URL is `https://splendor.pinky.lilf.ir`.
 - `dev-start` stops both modes, starts Astro's hot-reload dev server, and rewrites the Caddy block to proxy the frontend to it.
 - `stop` kills only tmux sessions managed by this script.
 
+During startup, the script waits for LobbyService to answer `/api/online` before starting the game server, so game registration is not racing the lobby boot.
+
 The script checks required local ports before startup. Current ports are:
 
 - Lobby service: `34172`
