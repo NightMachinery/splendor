@@ -211,19 +211,12 @@ nav {
   aspect-ratio: 1/1;
 }
 
-[astro-icon] {
-  height: 2em;
-  aspect-ratio: 1 / 1;
-  color: rgb(227 178 56);
-  cursor: pointer;
-}
-
 /* Icon Animations */
-[astro-icon="ic:baseline-settings"] {
+.settings-btn {
   transition: all 0.2s ease-out;
 }
 
-[astro-icon="ic:baseline-settings"]:hover {
+.settings-btn:hover {
   transform: rotate(25deg);
 }
 
@@ -792,4 +785,11 @@ tr > th {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.nav-icon {
+  height: 2em;
+  aspect-ratio: 1 / 1;
+  color: rgb(227 178 56);
+  cursor: pointer;
 }

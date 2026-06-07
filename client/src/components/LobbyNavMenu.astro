@@ -1,7 +1,6 @@
 ---
 import "../styles/lobby.css";
 import "../styles/transitions.css";
-import { Icon } from "astro-icon";
 
 export interface Props {
     hasAdminButton?: boolean;
@@ -14,7 +13,7 @@ const { hasAdminButton=false, hasHomeButton=false } = Astro.props;
 <nav>
     <div class="nav-left">
         {hasAdminButton && <div class="admin-btn">Admin Zone</div>}
-        {hasHomeButton && <Icon class="home-btn" name="ic:baseline-house"/>}
+        {hasHomeButton && <svg class="home-btn nav-icon" viewBox="0 0 24 24" aria-label="Lobby home" role="img"><path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5Z"/></svg>}
     </div>
     <div class="nav-middle">
         <div class="gametitle">Splendor</div>
@@ -22,7 +21,7 @@ const { hasAdminButton=false, hasHomeButton=false } = Astro.props;
     <div class="nav-right">
         <p id="player-greeting"></p>
         <div class="profile-pic"></div>
-        <Icon class="settings-btn" name="ic:baseline-settings"/>
+        <svg class="settings-btn nav-icon" viewBox="0 0 24 24" aria-label="Settings" role="img"><path fill="currentColor" d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.28 7.28 0 0 0-1.69-.98L14.5 2.42A.49.49 0 0 0 14 2h-4a.49.49 0 0 0-.49.42L9.13 5.07c-.61.24-1.18.56-1.69.98l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.14.22.4.31.61.22l2.49-1c.51.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.24 1.18-.56 1.69-.98l2.49 1c.23.08.48 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>
     </div>
 </nav>
 <script>

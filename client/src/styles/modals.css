@@ -19,13 +19,6 @@
   min-height: 60%;
 }
 
-[astro-icon] {
-  height: 2em;
-  aspect-ratio: 1 / 1;
-  color: goldenrod;
-  cursor: pointer;
-}
-
 .dropdown-btn {
   position: absolute;
   top: 1.5em;
@@ -406,4 +399,11 @@
 
 .cascade-board {
   margin-bottom: 2.5em;
+}
+
+.modal-icon {
+  height: 2em;
+  aspect-ratio: 1 / 1;
+  color: goldenrod;
+  cursor: pointer;
 }

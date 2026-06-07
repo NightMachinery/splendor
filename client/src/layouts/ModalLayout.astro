@@ -1,6 +1,5 @@
 ---
 import "../styles/modals.css"
-import { Icon } from 'astro-icon';
 
 export interface Props {
     id: string;
@@ -12,7 +11,7 @@ const { id, hasHover=true } = Astro.props;
 
 <div id={id} class="modal">
     <div class="modal-container">
-        {hasHover && <Icon class="dropdown-btn" name="ic:baseline-visibility-off"/>}
+        {hasHover && <svg class="dropdown-btn modal-icon" viewBox="0 0 24 24" aria-label="Temporarily hide modal" role="img"><path fill="currentColor" d="M12 6.5c3.79 0 7.17 2.13 8.82 5.5a10.95 10.95 0 0 1-2.05 2.74l1.42 1.42A13.23 13.23 0 0 0 23 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l1.65 1.65c.74-.23 1.52-.35 2.33-.35ZM2.71 3.16 1.39 4.48l2.28 2.28A13.08 13.08 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l3.14 3.14 1.32-1.32L2.71 3.16ZM7.53 10.62l1.55 1.55A3 3 0 0 0 12 15a2.9 2.9 0 0 0 1.35-.33l1.55 1.55A4.94 4.94 0 0 1 12 17a5 5 0 0 1-4.47-6.38Zm4.31-3.6 3.15 3.15.02-.16A3 3 0 0 0 12 7l-.16.02Z"/></svg>}
         <div class="modal-content">
             <slot />
         </div>
