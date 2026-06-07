@@ -2,6 +2,7 @@ import { SETTINGS } from "./settings.js";
 import { transition } from "./titleScreen.js";
 import { showError } from "./notify";
 import { updateUserData, getUserDetail } from "./user-settings.js";
+import { renderProfileAvatar } from "./avatar.js";
 
 /**
  * Retrieve all data from specified endpoint.
@@ -56,7 +57,6 @@ const setUpdateColour = (name, container) => {
             successMessage: `Successfully updated colour for ${name}!`
         }).then((success) => {
             if(success && name === SETTINGS.getUsername()) {
-                document.querySelector(".profile-pic").style.background = `#${newColor}`;
             }
         }).finally(() => updateBtn.disabled = false);
     });
@@ -212,7 +212,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // set user color
     getUserDetail().then((data) => {
         if(data) {
-            document.querySelector(".profile-pic").style.background = `#${data.preferredColour}`;
+            renderProfileAvatar(document.querySelector(".profile-pic"), data);
         }
     }).catch((err) => showError(err.toString()));
 });

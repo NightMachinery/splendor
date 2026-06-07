@@ -1,29 +1,7 @@
 import { SETTINGS } from "./settings.js";
 import { showError } from "./notify";
 import { updateUserData, getUserDetail } from "./user-settings.js";
-
-const setUpdatePassword = (name, container) => {
-    const updateBtn = container.querySelector("button");
-    updateBtn.addEventListener("click", () => {
-        updateBtn.disabled = true;
-        const oldPass = document.querySelector("body:not(.is-admin) #oldpassword");
-
-        const newPassword = container.querySelector("#newpassword").value;
-        console.log(`Requesting to change ${name}'s password`);
-        updateUserData({
-            endpoint: `/api/users/${name}/password`,
-            bodyData: { oldPassword: oldPass ? oldPass.value : "", nextPassword: newPassword },
-            method: "POST",
-            loadMessage: `Updating password for ${name}`,
-            successMessage: `Successfully updated password for ${name}!`
-        }).then((resp) => { 
-            if(resp) {
-                container.querySelector("#oldpassword").value = "";
-                container.querySelector("#newpassword").value = "";
-            }
-        }).finally(() => updateBtn.disabled = false);
-    });
-};
+import { renderProfileAvatar } from "./avatar.js";
 
 const setUpdateColour = (name, container) => {
     const updateBtn = container.querySelector("button");
@@ -39,8 +17,7 @@ const setUpdateColour = (name, container) => {
             successMessage: `Successfully updated colour for ${name}!`
         }).then((success) => {
             if(success && name === SETTINGS.getUsername()) {
-                document.querySelector(".profile-pic").style.background = `#${newColor}`;
-                document.querySelector(".your-colour input[type='color']").value = `#${data.preferredColour}`;
+                document.querySelector(".your-colour input[type='color']").value = `#${newColor}`;
             }
         }).finally(() => updateBtn.disabled = false);
     });
@@ -57,7 +34,8 @@ const setDeleteUser = (name, deleteBtn) => {
             successMessage: `Successfully deleted ${name}!`
         }).then((resp) => { 
             if(resp) {
-                SETTINGS.verifyCredentials().then(() => {});
+                SETTINGS.clearLocalIdentity();
+                SETTINGS.goToLogin();
             }
         }).finally(() => deleteBtn.disabled = false);
     });
@@ -66,7 +44,7 @@ const setDeleteUser = (name, deleteBtn) => {
 const updateUserInfo = async () => {
     const data = await getUserDetail();
     if(data) {
-        document.querySelector(".profile-pic").style.background = `#${data.preferredColour}`;
+        renderProfileAvatar(document.querySelector(".profile-pic"), data);
         document.querySelector(".your-colour input[type='color']").value = `#${data.preferredColour}`;
 
         const role = data.role.replace("ROLE_", "").toLowerCase();
@@ -75,7 +53,6 @@ const updateUserInfo = async () => {
         const name = data.name;
         document.querySelector(".your-username").textContent = name;
         setUpdateColour(name, document.querySelector(".color-controls"));
-        setUpdatePassword(name, document.querySelector(".your-pass-container"));
         setDeleteUser(name, document.querySelector(".delete-account-btn"));
 
         if(data.role === "ROLE_ADMIN") {

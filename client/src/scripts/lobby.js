@@ -2,6 +2,7 @@ import { SETTINGS, GAME_VERSION_TO_BOARD } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
+import { renderProfileAvatar } from "./avatar.js";
 import {
     playerAlias, isObserver, isMod,
     renderPlayerBadges, renderModerationActions
@@ -87,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // set user color
     getUserDetail().then((data) => {
         if(data) {
-            document.querySelector(".profile-pic").style.background = `#${data.preferredColour}`;
+            renderProfileAvatar(document.querySelector(".profile-pic"), data);
 
             // show service / admin stuff
             if(data.role === "ROLE_ADMIN") {

@@ -40,6 +40,7 @@ export const updateUserData = async (options) => {
  * @returns {Promise<JSON>} data
  */
 export const getUserDetail = async () => {
+    await SETTINGS.verifyCredentials();
     const url = new URL(`${SETTINGS.getLS_API()}/api/users/${SETTINGS.getUsername()}`);
     url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken() }).toString();
 

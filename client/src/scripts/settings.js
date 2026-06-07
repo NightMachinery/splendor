@@ -42,6 +42,8 @@ const getRoomId = () => {
     return params.get("sessionId");
 };
 
+const isLoginPage = () => window.location.pathname.replace(/\/+$/, "") === "/login";
+
 export const SETTINGS = {
 
     /**
@@ -68,7 +70,7 @@ export const SETTINGS = {
             return INTERNAL_SETTINGS.GS_API;
         }
 
-        return `${window.location.origin}/gs`
+        return `${window.location.origin}/gs`;
     },
 
     /**
@@ -95,7 +97,7 @@ export const SETTINGS = {
             return INTERNAL_SETTINGS.LS_API;
         }
 
-        return `${window.location.origin}/ls`
+        return `${window.location.origin}/ls`;
     },
 
     /**
@@ -183,15 +185,26 @@ export const SETTINGS = {
      * Force client to go to login screen.
      */
     goToLogin: () => {
-        window.location.pathname = "/login/";
+        if(!isLoginPage()) {
+            window.location.href = "/login/";
+        }
     },
+
+    clearLocalIdentity: () => {
+        localStorage.removeItem("username");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("displayName");
+    },
+
+    hasLocalIdentity: () => !!localStorage.getItem("displayName"),
 
     /**
      * Verify that the user is logged in.
-     * Will attempt to refresh token if available.
      * Will boot user to login screen if not.
      */
-    verifyCredentials: async () => {
+    verifyCredentials: async (options = {}) => {
+        const { allowCreate = false } = options;
         const roomToken = getRoomMigrateToken();
         const roomId = getRoomId();
         if(roomToken && roomId) {
@@ -199,7 +212,18 @@ export const SETTINGS = {
             if(resp.ok) {
                 const data = await resp.json();
                 sessionStorage.setItem(`roomUser:${roomId}:${roomToken}`, data.name);
-                return;
+                return data;
+            }
+        }
+
+        let displayName = localStorage.getItem("displayName");
+        if(!displayName) {
+            if(allowCreate) {
+                displayName = "Player";
+                localStorage.setItem("displayName", displayName);
+            } else {
+                SETTINGS.goToLogin();
+                throw new Error("Display name required.");
             }
         }
 
@@ -211,35 +235,28 @@ export const SETTINGS = {
             SETTINGS.setAccessToken(token);
         }
 
-        let displayName = localStorage.getItem("displayName");
-        if(!displayName) {
-            displayName = window.prompt("Choose a display name", "Player") || "Player";
-            localStorage.setItem("displayName", displayName);
-        }
-
         const resp = await fetch(`${SETTINGS.getLS_API()}/api/local-auth`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ token, displayName })
         });
         if(!resp.ok) {
+            SETTINGS.clearLocalIdentity();
             SETTINGS.goToLogin();
-            return;
+            throw new Error(await resp.text());
         }
         const data = await resp.json();
         SETTINGS.setAccessToken(data.token);
         SETTINGS.setUsername(data.username);
         localStorage.setItem("displayName", data.displayName);
+        return data;
     },
 
     /**
      * Removes all saved tokens and credentials.
      */
     logout: () => {
-        localStorage.removeItem("username");
-        localStorage.removeItem("refreshToken");
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("displayName");
+        SETTINGS.clearLocalIdentity();
     },
 };
 

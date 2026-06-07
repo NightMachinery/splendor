@@ -193,11 +193,15 @@ nav {
 }
 
 .profile-pic {
-  background: none;
+  background: #d2eff3;
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
   color: white;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: var(--btn-font-size);
   border-radius: 10px;
   border: 0.098rem solid goldenrod;
@@ -221,15 +225,6 @@ nav {
 
 [astro-icon="ic:baseline-settings"]:hover {
   transform: rotate(25deg);
-}
-
-[astro-icon="ic:outline-logout"] {
-  margin-right: var(--btn-margin);
-  transition: all 0.2s ease-out;
-}
-
-[astro-icon="ic:outline-logout"]:hover {
-  transform: translate(0.2em);
 }
 
 .hidden {
@@ -791,4 +786,10 @@ tr > th {
   .session-player-list {
     grid-template-columns: 1fr;
   }
+}
+
+.profile-pic nice-avatar {
+  width: 100%;
+  height: 100%;
+  display: block;
 }

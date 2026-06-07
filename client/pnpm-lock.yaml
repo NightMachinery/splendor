@@ -11,6 +11,9 @@ dependencies:
   '@astrojs/tailwind':
     specifier: ^3.0.1
     version: 3.0.1(astro@2.0.13)(tailwindcss@3.2.7)
+  '@iconify-json/ic':
+    specifier: ^1.2.4
+    version: 1.2.4
   '@types/react':
     specifier: ^18.0.31
     version: 18.0.31
@@ -26,6 +29,9 @@ dependencies:
   astro-icon:
     specifier: ^0.8.0
     version: 0.8.0
+  nice-avatar-svg:
+    specifier: ^0.1.0
+    version: 0.1.0
   react:
     specifier: ^18.2.0
     version: 18.2.0
@@ -654,6 +660,16 @@ packages:
     resolution: {integrity: sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==}
     deprecated: Use @eslint/object-schema instead
     dev: true
+
+  /@iconify-json/ic@1.2.4:
+    resolution: {integrity: sha512-pzPMmrZrBQuwT7nmtrYdkttun8KalRGgZPIL1Ny9KpF2zjRGIUPN+npTfuD3lrgO/OnSwAoJWuekQwBpt/Cqrw==}
+    dependencies:
+      '@iconify/types': 2.0.0
+    dev: false
+
+  /@iconify/types@2.0.0:
+    resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
+    dev: false
 
   /@jridgewell/gen-mapping@0.1.1:
     resolution: {integrity: sha512-sQXCasFk+U8lWYEe66WxRDOE9PjVz4vSM51fTu3Hw+ClTpUSQb718772vH3pyS5pShp6lvQM7SxgIDXXXmOX7w==}
@@ -2777,6 +2793,14 @@ packages:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
     dev: true
 
+  /nice-avatar-svg@0.1.0:
+    resolution: {integrity: sha512-tdI58BJq+GzZyzfcJiZeWd//Qm/C2oggmuoOrcDFiMT7ECag/jANnminb3sAT8SGvzQNlHo5eYkufVOrVR21zA==}
+    dependencies:
+      preact: 10.29.2
+      preact-custom-element: 4.6.0(preact@10.29.2)
+      preact-render-to-string: 6.7.0(preact@10.29.2)
+    dev: false
+
   /nlcst-to-string@3.1.1:
     resolution: {integrity: sha512-63mVyqaqt0cmn2VcI2aH6kxe1rLAmSROqHMA0i4qqg1tidkfExgpb0FGMikMCn86mw5dFtBtEANfmSSK7TjNHw==}
     dependencies:
@@ -3076,6 +3100,26 @@ packages:
       nanoid: 3.3.4
       picocolors: 1.0.0
       source-map-js: 1.0.2
+
+  /preact-custom-element@4.6.0(preact@10.29.2):
+    resolution: {integrity: sha512-RhPMuFpEIsbpEwnF+MoRbddzX0y8AdLn1dSpJSbpc6Nx3aSAPXSW9t2xAqQyGfEH1sl/bcsi8Vf0XbvStUy/Ug==}
+    peerDependencies:
+      preact: '>= 10.25.0 || >=11.0.0-0'
+    dependencies:
+      preact: 10.29.2
+    dev: false
+
+  /preact-render-to-string@6.7.0(preact@10.29.2):
+    resolution: {integrity: sha512-Z4WR8fmLMRpdYqJ9i7vrlXSsSrxVJydwrkEXHapexfARbWfGb7vGcnvNQnIzN0cXciMVOlz/XLoiMCi9gUsy9Q==}
+    peerDependencies:
+      preact: '>=10 || >= 11.0.0-0'
+    dependencies:
+      preact: 10.29.2
+    dev: false
+
+  /preact@10.29.2:
+    resolution: {integrity: sha512-7tNmwg/7mzzAoB/8kSg6Hl37JraAZw3Z3A0JSY7VXlZwo82Xn0G7wKbNNs2qoF4ZEEsQGTwDAroNdqKs1ofJxQ==}
+    dev: false
 
   /preferred-pm@3.0.3:
     resolution: {integrity: sha512-+wZgbxNES/KlJs9q40F/1sfOd/j7f1O9JaHcW5Dsn3aUUOZg3L2bjpVUcKV2jvtElYfoTuQiNeMfQJ4kwUAhCQ==}
