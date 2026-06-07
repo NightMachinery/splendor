@@ -2,7 +2,10 @@ import { SETTINGS, GAME_VERSION_TO_BOARD } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
-import { copyText } from "./clipboard.js";
+import {
+    playerAlias, isObserver, isMod,
+    renderPlayerBadges, renderModerationActions
+} from "./moderation-ui.js";
 
 // perhaps we need a better build system
 import { hashText } from "./local-md5.js";
@@ -164,7 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "DELETE"
             }).then((resp) => {
                 if(!resp.ok) {
-                    resp.test().then((data) => showError(data));
+                    resp.text().then((data) => showError(data));
                 }
             }).catch((err) => {
                 showError(err.toString());
@@ -213,52 +216,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
 
-    const copyMigrateLink = async (elm, ses) => {
-        const row = elm.closest("tr[session-id]");
-        const sessionId = row.getAttribute("session-id");
-        let player = SETTINGS.getUsername();
-        if((ses.mods || []).includes(player)) {
-            player = window.prompt("Player id to migrate", ses.players.join(", ")) || player;
-            if(player.includes(",")) player = player.split(",")[0].trim();
-        }
-        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${player}/migrate-token`);
-        url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken() }).toString();
-        const resp = await fetch(url, { method: "POST" });
-        if(!resp.ok) {
-            showError(await resp.text());
-            return;
-        }
-        const migrate = await resp.text();
-        const version = row.getAttribute("version");
-        const link = `${window.location.origin}/${GAME_VERSION_TO_BOARD[version]}/?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`;
-        await copyText(link);
-    };
-
-
-    const modPromptPlayer = (ses) => window.prompt("Player id", ses.players.join(", ")) || "";
-
-    const toggleObserver = async (elm, ses) => {
-        const player = modPromptPlayer(ses);
-        if(!player) return;
-        const observer = !(ses.observers || []).includes(player);
-        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
-        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${player}/observer`);
-        url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken(), observer }).toString();
-        const resp = await fetch(url, { method: "POST" });
-        if(!resp.ok) showError(await resp.text());
-    };
-
-    const toggleMod = async (elm, ses) => {
-        const player = modPromptPlayer(ses);
-        if(!player) return;
-        const mod = !(ses.mods || []).includes(player);
-        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
-        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${player}/mod`);
-        url.search = new URLSearchParams({ "access_token": SETTINGS.getAccessToken(), mod }).toString();
-        const resp = await fetch(url, { method: "POST" });
-        if(!resp.ok) showError(await resp.text());
-    };
-
     const playSession = (elm, sesId, gameVer) => {
         elm.disabled = true;
 
@@ -270,11 +227,63 @@ document.addEventListener("DOMContentLoaded", () => {
     // Related to checking sessions that user can join
     var availableSessionHash = "-";
 
+    const renderSessionPlayers = (row, ses) => {
+        const cell = row.querySelector(".session-players-info");
+        const username = SETTINGS.getUsername();
+        const sessionId = row.getAttribute("session-id");
+        const version = row.getAttribute("version");
+        const maxP = ses.gameParameters.maxSessionPlayers;
+        const activeCount = ses.players.filter(p => !isObserver(ses, p)).length;
+        const canSeeModeration = isMod(ses, username) || ses.players.includes(username);
+        cell.innerHTML = "";
 
-    const formatSessionPlayers = (ses) => {
-        const aliases = ses.displayNames || {};
-        const observers = ses.observers || [];
-        return ses.players.map(p => `${aliases[p] || p}${p === SETTINGS.getUsername() ? " (you)" : ""}${observers.includes(p) ? " [observer]" : ""}`).join(", ");
+        const panel = document.createElement("details");
+        panel.className = "session-player-panel";
+        panel.open = canSeeModeration;
+        cell.appendChild(panel);
+
+        const summary = document.createElement("summary");
+        summary.className = "session-player-summary";
+        summary.innerHTML = `<span>Players / Moderation</span><strong>[${activeCount}/${maxP}]</strong>`;
+        panel.appendChild(summary);
+
+        const list = document.createElement("div");
+        list.className = "session-player-list";
+        panel.appendChild(list);
+
+        ses.players.forEach((player) => {
+            const self = player === username;
+            const mod = isMod(ses, player);
+            const observer = isObserver(ses, player);
+
+            const item = document.createElement("div");
+            item.className = "session-player-card";
+            item.classList.toggle("self", self);
+            item.classList.toggle("observer", observer);
+            item.classList.toggle("moderator", mod);
+
+            const meta = document.createElement("div");
+            meta.className = "session-player-meta";
+            const name = document.createElement("span");
+            name.className = "session-player-name";
+            name.textContent = playerAlias(ses, player);
+            name.title = `Internal id: ${player}`;
+            meta.appendChild(name);
+
+            const badges = document.createElement("span");
+            badges.className = "session-player-badges";
+            renderPlayerBadges(badges, ses, player, "session-player-badge");
+            meta.appendChild(badges);
+            item.appendChild(meta);
+
+            const actions = document.createElement("div");
+            actions.className = "session-player-actions";
+            renderModerationActions(actions, ses, sessionId, player, {
+                buildMigrateLink: (migrate) => `${window.location.origin}/${GAME_VERSION_TO_BOARD[version]}/?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`
+            });
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
     };
 
     function updateAvailableSessions(data) {
@@ -312,6 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const setAttributes = (ses, node) => {
             const sesPlayers = ses.players;
+            const activePlayers = sesPlayers.filter(p => !isObserver(ses, p));
 
             if(sesPlayers.includes(username)) {
                 node.setAttribute("joined", "true");
@@ -319,29 +329,39 @@ document.addEventListener("DOMContentLoaded", () => {
                 node.removeAttribute("joined");
             }
 
-            if((ses.mods || []).includes(username)) {
+            if(isMod(ses, username)) {
                 node.setAttribute("mod", "true");
             } else {
                 node.removeAttribute("mod");
             }
 
+            if(activePlayers.length >= ses.gameParameters.maxSessionPlayers) {
+                node.setAttribute("full", "true");
+            } else {
+                node.removeAttribute("full");
+            }
+
             if(ses.creator === username) {
                 node.setAttribute("created", "true");
+            } else {
+                node.removeAttribute("created");
+            }
 
-                // if regular game and has enough palyers
-                const regGameCan = ses.savegameid === "" && sesPlayers.length > 1 && !ses.launched;
-                // if save and equals players
-                const saveCan = ses.savegameid !== "" && !ses.launched
-                                && ses.gameParameters.maxSessionPlayers === sesPlayers.length;
-                if(regGameCan || saveCan) {
-                    node.setAttribute("launchable", "true");
-                } else {
-                    node.removeAttribute("launchable");
-                }
+            // if regular game and has enough players
+            const regGameCan = ses.savegameid === "" && activePlayers.length > 1 && !ses.launched;
+            // if save and equals players
+            const saveCan = ses.savegameid !== "" && !ses.launched
+                            && ses.gameParameters.maxSessionPlayers === activePlayers.length;
+            if(ses.creator === username && (regGameCan || saveCan)) {
+                node.setAttribute("launchable", "true");
+            } else {
+                node.removeAttribute("launchable");
             }
 
             if(ses.launched) {
                 node.setAttribute("started", "true");
+            } else {
+                node.removeAttribute("started");
             }
         };
 
@@ -360,12 +380,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             trNode.querySelector(".session-game-name").textContent = ses.gameParameters.displayName;
-            trNode.querySelector(".session-creator-name").textContent = ses.creator;
+            trNode.querySelector(".session-creator-name").textContent = playerAlias(ses, ses.creator);
+            trNode.querySelector(".session-creator-name").title = `Internal id: ${ses.creator}`;
 
-            const sesPlayers = ses.players;
-            const curP = ses.players.length;
-            const maxP = ses.gameParameters.maxSessionPlayers;
-            trNode.querySelector(".session-players-info").textContent = `[${curP}/${maxP}]: ${formatSessionPlayers(ses)}`;
+            renderSessionPlayers(trNode, ses);
 
             setAttributes(ses, trNode);
 
@@ -376,18 +394,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const launchBtn = tempNode.querySelector(".launch-btn.ses-btn");
             const playBtn = tempNode.querySelector(".play-btn.ses-btn");
             const spectateBtn = tempNode.querySelector(".spectate-btn.ses-btn");
-            const migrateBtn = tempNode.querySelector(".migrate-btn.ses-btn");
-            const observerBtn = tempNode.querySelector(".observer-btn.ses-btn");
-            const modBtn = tempNode.querySelector(".mod-btn.ses-btn");
             delBtn.onclick = () => { deleteSession(delBtn); };
             leaveBtn.onclick = () => { leaveSession(leaveBtn); };
             joinBtn.onclick = () => { joinSession(joinBtn); };
             launchBtn.onclick = () => { launchSession(launchBtn); };
             playBtn.onclick = () => playSession(playBtn, sesId, gameVer);
             spectateBtn.onclick = () => playSession(spectateBtn, sesId, gameVer);
-            migrateBtn.onclick = () => copyMigrateLink(migrateBtn, ses);
-            observerBtn.onclick = () => toggleObserver(observerBtn, ses);
-            modBtn.onclick = () => toggleMod(modBtn, ses);
 
             tbl.appendChild(tempNode);
 
@@ -408,19 +420,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const alreadyInListId = nowAvailableSesIdList.filter(x => curSesIdList.includes(x));
         alreadyInListId.forEach((sesId) => {
             const ses = nowAvailableSesions[sesId];
-            const sesPlayers = ses.players;
-            const curP = ses.players.length;
-            const maxP = ses.gameParameters.maxSessionPlayers;
-
             const trNode = document.querySelector(`tr[session-id="${sesId}"]`);
 
+            trNode.querySelector(".session-game-name").textContent = ses.gameParameters.displayName;
+            trNode.querySelector(".session-creator-name").textContent = playerAlias(ses, ses.creator);
+            trNode.querySelector(".session-creator-name").title = `Internal id: ${ses.creator}`;
             setAttributes(ses, trNode);
-
-            const node = document.querySelector(`${tableSel} tr[session-id="${sesId}"] .session-players-info`);
-            const newText = `[${curP}/${maxP}]: ${formatSessionPlayers(ses)}`;
-            if(node.textContent !== newText) {
-                node.textContent = newText;
-            }
+            renderSessionPlayers(trNode, ses);
         });
 
     }

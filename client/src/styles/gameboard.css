@@ -586,3 +586,30 @@ body {
   flex-direction: row;
   gap: 0.4em;
 }
+
+.player-inventory-mod-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  margin: 0.35rem;
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.28);
+  color: white;
+}
+
+.player-inventory-mod-panel .game-player-mod-controls {
+  max-width: none;
+}
+
+.player-inventory-mod-panel .self-name {
+  font-weight: 700;
+  color: #f5cc65;
+}
+
+@media (width <= 900px) {
+  .player-inventory-mod-panel {
+    font-size: 0.85rem;
+  }
+}

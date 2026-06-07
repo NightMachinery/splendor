@@ -238,3 +238,107 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 0.3em;
 }
+
+.game-player-mod-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em;
+  justify-content: center;
+  margin-top: 0.35em;
+  max-width: 7.5em;
+}
+
+.game-player-mod-controls .player-action-btn {
+  width: 1.8em;
+  height: 1.8em;
+  border: 0;
+  border-radius: 0.4em;
+  color: white;
+  background: #374151;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.game-player-mod-controls .player-action-btn svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+
+.game-player-mod-controls .player-action-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.game-player-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em;
+  justify-content: center;
+  margin-top: 0.25em;
+}
+
+.game-player-badge {
+  border-radius: 999px;
+  padding: 0.1em 0.35em;
+  font-size: 0.55em;
+  line-height: 1.4;
+  color: white;
+  background: rgba(255, 255, 255, 0.18);
+  text-transform: uppercase;
+}
+
+.other-player.self .other-player-container {
+  outline: 0.12em solid #f5cc65;
+}
+
+.other-player.observer .other-player-container {
+  opacity: 0.78;
+  filter: grayscale(0.25);
+}
+
+.game-player-mod-controls .player-action-btn:hover:not(:disabled),
+.game-player-mod-controls .player-action-btn:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  outline: 0.12em solid #f5cc65;
+  outline-offset: 0.1em;
+}
+
+.game-player-mod-controls .player-action-btn.joinback {
+  background: #047857;
+}
+
+.game-player-mod-controls .player-action-btn.observe {
+  background: #475569;
+}
+
+.game-player-mod-controls .player-action-btn.modtoggle {
+  background: #92400e;
+}
+
+.game-player-badge.you {
+  background: #2563eb;
+}
+
+.game-player-badge.owner,
+.game-player-badge.mod,
+.game-player-badge.temp-mod {
+  background: #a16207;
+}
+
+.game-player-badge.observer {
+  background: #475569;
+}
+
+@media (width <= 900px) {
+  .other-players {
+    font-size: 3.2vmin;
+  }
+
+  .game-player-mod-controls .player-action-btn {
+    width: 2.2em;
+    height: 2.2em;
+  }
+}

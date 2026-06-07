@@ -608,30 +608,187 @@ tr > th {
   pointer-events: none;
 }
 
-.current-sessions-table .icon-btn {
-  border: 0;
-  background: #4b5563;
-  width: 2.2em;
-  height: 2.2em;
-  padding: 0.35em;
-  align-items: center;
-  justify-content: center;
+.session-player-panel {
+  min-width: min(40rem, 70vw);
 }
 
-.current-sessions-table .icon-btn svg {
-  width: 1.2em;
-  height: 1.2em;
+.session-player-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #f8e7b2;
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+  min-height: 2rem;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.session-player-summary strong {
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.session-player-panel:not([open]) .session-player-summary {
+  margin-bottom: 0;
+}
+
+.session-player-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.45rem;
+}
+
+.session-player-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+  border: 1px solid rgba(245, 204, 101, 0.22);
+  border-radius: 0.65rem;
+  padding: 0.45rem;
+  background: rgba(14, 19, 31, 0.72);
+  box-shadow: rgba(0, 0, 0, 0.2) 0 0.2rem 0.4rem;
+}
+
+.session-player-card.self {
+  border-color: #f5cc65;
+  background: rgba(85, 63, 13, 0.7);
+}
+
+.session-player-card.observer {
+  opacity: 0.78;
+  border-style: dashed;
+}
+
+.session-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.session-player-name {
+  color: #fff;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-player-badges,
+.session-player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.session-player-badge {
+  border-radius: 999px;
+  padding: 0.12rem 0.4rem;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff4c7;
+  font-size: 0.65rem;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.session-player-badge.you {
+  background: #2563eb;
+}
+
+.session-player-badge.owner,
+.session-player-badge.mod,
+.session-player-badge.temp-mod {
+  background: #a16207;
+}
+
+.session-player-badge.observer {
+  background: #475569;
+}
+
+.player-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.45rem;
+  color: #fff;
+  background: #374151;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, opacity 0.12s ease;
+}
+
+.player-action-btn:hover:not(:disabled),
+.player-action-btn:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  background: #4b5563;
+  outline: 2px solid #f5cc65;
+  outline-offset: 2px;
+}
+
+.player-action-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.player-action-btn svg {
+  width: 1.1rem;
+  height: 1.1rem;
   fill: currentColor;
 }
 
-.current-sessions-table tr:is([joined]) .migrate-btn {
-  display: inline-flex;
+.player-action-btn.joinback {
+  background: #047857;
 }
 
-.current-sessions-table tr:not([mod]) .mod-only {
-  display: none !important;
+.player-action-btn.observe {
+  background: #475569;
 }
 
-.current-sessions-table tr[mod] .mod-only {
-  display: inline-flex;
+.player-action-btn.modtoggle {
+  background: #92400e;
+}
+
+@media (width <= 900px) {
+  .current-sessions-table,
+  .current-sessions-table tbody,
+  .current-sessions-table tr,
+  .current-sessions-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .current-sessions-table tr:first-child {
+    display: none;
+  }
+
+  .current-sessions-table tbody > tr:not(:first-child) {
+    margin: 0.75rem 0;
+    border-radius: 1rem;
+    overflow: hidden;
+  }
+
+  .current-sessions-table tr td.session-btns {
+    width: 100%;
+  }
+
+  .current-sessions-table .session-btns > div {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .session-player-panel {
+    min-width: 0;
+  }
+
+  .session-player-list {
+    grid-template-columns: 1fr;
+  }
 }

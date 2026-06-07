@@ -22,3 +22,14 @@ export const showError = (msg, timeout = 4000) => {
         theme: "colored",
     });
 };
+
+export const showSuccess = (msg, timeout = 2500) => {
+    toast.success(msg, {
+        position: "top-center",
+        autoClose: timeout,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        theme: "colored",
+    });
+};

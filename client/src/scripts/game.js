@@ -8,6 +8,56 @@ import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
 
 import { hashText } from "./local-md5.js";
+import {
+    playerAlias, isObserver, renderPlayerBadges, renderModerationActions
+} from "./moderation-ui.js";
+
+let currentLobbySession = null;
+let currentLobbySessionHash = "";
+
+const fetchLobbySession = async (sessionId) => {
+    if(!sessionId) return currentLobbySession;
+    try {
+        const resp = await fetch(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}`);
+        if(!resp.ok || resp.status === 204) return currentLobbySession;
+        return await resp.json();
+    } catch(err) {
+        console.log("Could not fetch lobby session metadata: " + err);
+        return currentLobbySession;
+    }
+};
+
+const refreshGameModerationChrome = (state = currentState) => {
+    if(!state || !currentLobbySession) return;
+    const sessionId = (new URL(document.location)).searchParams.get("sessionId");
+    state.players.forEach((playerInfo) => {
+        const pNode = document.querySelector(`.other-players .other-player[pname="${playerInfo.name}"]`);
+        if(pNode) {
+            pNode.classList.toggle("self", playerInfo.name === SETTINGS.getUsername());
+            pNode.classList.toggle("observer", isObserver(currentLobbySession, playerInfo.name));
+            pNode.querySelector(".other-player-name").textContent = playerAlias(currentLobbySession, playerInfo.name);
+            const badges = pNode.querySelector(".game-player-badges");
+            if(badges) renderPlayerBadges(badges, currentLobbySession, playerInfo.name, "game-player-badge");
+            const controls = pNode.querySelector(".game-player-mod-controls");
+            if(controls) renderModerationActions(controls, currentLobbySession, sessionId, playerInfo.name, { afterAction: refreshLobbySessionAndChrome });
+        }
+        if(playerInfo.name === SETTINGS.getUsername()) {
+            const modPanel = document.querySelector("#player-inventory .player-inventory-mod-panel");
+            if(modPanel) {
+                modPanel.querySelector(".self-name").textContent = playerAlias(currentLobbySession, playerInfo.name);
+                renderPlayerBadges(modPanel.querySelector(".game-player-badges"), currentLobbySession, playerInfo.name, "game-player-badge");
+                renderModerationActions(modPanel.querySelector(".game-player-mod-controls"), currentLobbySession, sessionId, playerInfo.name, { afterAction: refreshLobbySessionAndChrome });
+            }
+        }
+    });
+};
+
+const refreshLobbySessionAndChrome = async () => {
+    const sessionId = (new URL(document.location)).searchParams.get("sessionId");
+    currentLobbySession = await fetchLobbySession(sessionId);
+    currentLobbySessionHash = JSON.stringify(currentLobbySession || {});
+    refreshGameModerationChrome();
+};
 
 const updateTokensCount = (parentSelector, tokenInfo, bonusInfo = null) => {
     const parentNode = document.querySelector(parentSelector);
@@ -207,6 +257,18 @@ const updateMainPlayerInfo = (playerInfo) => {
     } else {
         playerInv.classList.remove("shrink");
     }
+
+    let modPanel = playerInv.querySelector(".player-inventory-mod-panel");
+    if(!modPanel) {
+        modPanel = document.createElement("div");
+        modPanel.className = "player-inventory-mod-panel";
+        modPanel.innerHTML = `<div class="self-name"></div><div class="game-player-badges"></div><div class="game-player-mod-controls"></div>`;
+        playerInv.querySelector(".player-inventory-container").appendChild(modPanel);
+    }
+    modPanel.querySelector(".self-name").textContent = playerAlias(currentLobbySession, playerInfo.name);
+    renderPlayerBadges(modPanel.querySelector(".game-player-badges"), currentLobbySession, playerInfo.name, "game-player-badge");
+    const sessionId = (new URL(document.location)).searchParams.get("sessionId");
+    renderModerationActions(modPanel.querySelector(".game-player-mod-controls"), currentLobbySession, sessionId, playerInfo.name, { afterAction: refreshLobbySessionAndChrome });
 };
 
 const updateOtherPlayerInfo = (pInfo) => {
@@ -219,13 +281,32 @@ const updateOtherPlayerInfo = (pInfo) => {
         const pDiv = tNode.querySelector(".other-player");
 
         pDiv.setAttribute("pname", pInfo.name);
-        pDiv.querySelector(".other-player-name").textContent = pInfo.name;
+        pDiv.querySelector(".other-player-name").textContent = playerAlias(currentLobbySession, pInfo.name);
 
         document.querySelector(".other-players").appendChild(tNode);
 
         // now reget the node
         pNode = document.querySelector(selector);
     }
+
+    pNode.classList.toggle("self", pInfo.name === SETTINGS.getUsername());
+    pNode.classList.toggle("observer", isObserver(currentLobbySession, pInfo.name));
+    pNode.querySelector(".other-player-name").textContent = playerAlias(currentLobbySession, pInfo.name);
+
+    let badges = pNode.querySelector(".game-player-badges");
+    if(!badges) {
+        badges = document.createElement("div");
+        pNode.querySelector(".other-player-profile").appendChild(badges);
+    }
+    renderPlayerBadges(badges, currentLobbySession, pInfo.name, "game-player-badge");
+
+    let controls = pNode.querySelector(".game-player-mod-controls");
+    if(!controls) {
+        controls = document.createElement("div");
+        pNode.querySelector(".other-player-profile").appendChild(controls);
+    }
+    const sessionId = (new URL(document.location)).searchParams.get("sessionId");
+    renderModerationActions(controls, currentLobbySession, sessionId, pInfo.name, { afterAction: refreshLobbySessionAndChrome });
 
     // update tokens, cards, prestige points
     const tokenMap = pInfo.tokens;
@@ -302,6 +383,11 @@ const updateGameboard = async () => {
 
     const windowParams = (new URL(document.location)).searchParams;
     const sessionId = windowParams.get("sessionId");
+    const nextLobbySession = await fetchLobbySession(sessionId);
+    const nextLobbySessionHash = JSON.stringify(nextLobbySession || {});
+    const lobbySessionChanged = nextLobbySessionHash !== currentLobbySessionHash;
+    currentLobbySession = nextLobbySession;
+    currentLobbySessionHash = nextLobbySessionHash;
     const params = {
         "hash": gameStateHash
     };
@@ -314,7 +400,8 @@ const updateGameboard = async () => {
     const dataText = await resp.text();
 
     if(resp.status == 204) {
-        // no update
+        // no game-state update; still refresh badges/actions if lobby moderation state changed.
+        if(lobbySessionChanged) refreshGameModerationChrome();
         return;
     }
 
