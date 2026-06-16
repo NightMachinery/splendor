@@ -59,3 +59,46 @@
 .extra-token-container > .board-token {
   height: 4em;
 }
+
+/* Responsive trading-posts board additions ---------------------------------- */
+@media (width <= 700px) {
+  .board-container {
+    order: 1;
+    width: 100%;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.65rem;
+    padding-left: 0;
+    overflow: visible;
+  }
+
+  .board-container > .powers-container {
+    order: 2;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.7rem;
+    font-size: clamp(0.5rem, 2.4vw, 0.75rem);
+  }
+
+  .board-container > .board {
+    order: 1;
+  }
+
+  .power > img {
+    height: clamp(2.1rem, 11vw, 3.2rem);
+  }
+
+  .power > .coa-indicator {
+    gap: 0.25em;
+    top: -0.6em;
+  }
+
+  .coa-indicator img,
+  .player-coat-of-arms > img {
+    height: clamp(1.25rem, 6vw, 1.8rem);
+  }
+}

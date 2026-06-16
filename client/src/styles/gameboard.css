@@ -613,3 +613,271 @@ body {
     font-size: 0.85rem;
   }
 }
+
+/* Responsive gameplay layout ------------------------------------------------- */
+@media (width <= 1100px) {
+  .navigation {
+    width: min(22rem, 82vw);
+    left: min(-22rem, -82vw);
+  }
+
+  .top-menu-title {
+    font-size: clamp(1.5rem, 7vw, 2.3rem);
+  }
+
+  .game-elements {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .board {
+    font-size: clamp(0.56rem, 1.9vw, 1.55rem);
+    min-width: 0;
+  }
+
+  .player-inventory,
+  .other-players {
+    font-size: clamp(0.55rem, 1.7vw, 1.3rem);
+  }
+}
+
+@media (width <= 700px) {
+  html,
+  body {
+    min-height: 100%;
+    height: auto;
+    overflow-x: hidden;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  .top-menu-bar {
+    position: sticky;
+    top: 0;
+    height: 3rem;
+  }
+
+  .bar {
+    width: 2rem;
+    height: 0.28rem;
+    margin: 4px 0;
+  }
+
+  .game-elements {
+    flex: none;
+    min-height: calc(100dvh - 3rem);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.55rem 0.45rem 1rem;
+    overflow: visible;
+  }
+
+  .player-inventory {
+    order: 2;
+    width: 100%;
+    max-height: none;
+    justify-content: flex-start;
+    font-size: clamp(0.62rem, 2.5vw, 0.95rem);
+  }
+
+  .player-inventory.shrink {
+    font-size: clamp(0.58rem, 2.25vw, 0.85rem);
+  }
+
+  .player-inventory-container {
+    width: 100%;
+    max-width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.65em;
+    padding: 0.85em 0.7em 0.7em;
+    border-radius: 1em;
+    border-left: 0;
+
+    --player-inv-card-height: clamp(3.8rem, 18vw, 5.5rem);
+  }
+
+  .player-inventory-container > .player-prestige-points-container {
+    right: 0.35em;
+    top: 0.35em;
+    height: 2.15em;
+  }
+
+  .player-inventory-tokens {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.45em;
+    max-width: calc(100% - 3em);
+  }
+
+  .player-inventory-cards,
+  .player-inventory-reservedcards,
+  .player-inventory-nobles,
+  .player-inventory-reserved-nobles {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.2em 0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .player-inventory-card-drawer {
+    position: static;
+    width: auto;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .player-inventory-card:not(:nth-child(1)),
+  .player-inventory-card-drawer:hover .player-inventory-card:not(:nth-child(1)),
+  .player-inventory-reservedcards .player-inventory-card-reserved:not(:first-child),
+  .player-inventory-reservedcards:hover .player-inventory-card-reserved:not(:first-child),
+  .player-inventory-nobles .noble-card:not(:first-child),
+  .player-inventory-reserved-nobles .noble-card:not(:first-child),
+  .player-inventory-nobles:hover .noble-card:not(:first-child),
+  .player-inventory-reserved-nobles:hover .noble-card:not(:first-child) {
+    margin-left: 0;
+    padding-left: 0.15em;
+  }
+
+  .player-inventory-card-drawer .player-inventory-card:hover > *,
+  .player-inventory-card:hover > * {
+    top: 0;
+  }
+
+  .board {
+    order: 1;
+    width: 100%;
+    flex: none;
+    gap: 0.65rem;
+    font-size: clamp(0.48rem, 2.23vw, 0.72rem);
+    overflow: visible;
+  }
+
+  .board-tokens,
+  .board-nobles,
+  .board-cards-dev-selectable {
+    max-width: 100%;
+  }
+
+  .board-tokens {
+    flex-wrap: wrap;
+    gap: 0.55em;
+  }
+
+  .board-nobles {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.45em;
+  }
+
+  .board-cards {
+    width: 100%;
+    align-items: center;
+    gap: 0.45em;
+
+    --board-deck-margin: 0.45em;
+  }
+
+  .board-cards-row {
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+    gap: 0.22em;
+  }
+
+  .board-cards-dev-deck,
+  .board-cards-dev-deck-orient {
+    margin: 0;
+  }
+
+  .board-cards-dev-selectable {
+    gap: 0.22em;
+    min-width: 0;
+  }
+
+  #buy-card-board .board-card-dev > img,
+  .board-cards-row .board-cards-dev-deck > img,
+  .board-cards-row .board-cards-dev-deck-orient > img,
+  .board-cards-row .board-card-dev > img,
+  .board-cards-dev-deck > span,
+  .board-cards-dev-deck-orient > span,
+  .board-card-dev > span,
+  .board-card-dev.purchase-show-card {
+    height: clamp(3.1rem, 17.7vw, 4.8rem);
+  }
+
+  .board-nobles .noble-card img {
+    height: clamp(2.35rem, 13vw, 3.4rem);
+  }
+
+  .board-token {
+    height: clamp(1.75rem, 9vw, 2.35rem);
+  }
+
+  .other-players {
+    order: 3;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    font-size: clamp(0.56rem, 2.35vw, 0.82rem);
+
+    --other-player-preview-size: 4.8em;
+    --other-player-card-size: 4em;
+    --other-player-container-padding: 0.6em;
+  }
+
+  .other-player {
+    width: 100%;
+    min-height: auto;
+  }
+
+  .other-player-container {
+    position: relative;
+    inset: auto;
+    transform: none;
+    width: 100%;
+    border-radius: var(--other-player-container-border-radius);
+    padding: var(--other-player-container-padding);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .other-player:hover .other-player-container {
+    transform: none;
+  }
+
+  .other-player-profile {
+    min-width: var(--other-player-preview-size);
+  }
+
+  .other-player-inventory {
+    overflow-x: auto;
+    max-width: none;
+  }
+
+  .other-player-tokens {
+    flex-wrap: wrap;
+    min-width: max-content;
+  }
+
+  .other-inventory-card:hover > img,
+  .other-inventory-card-reserved:hover > img,
+  .other-inventory-noble-cards .noble-card:hover img,
+  .other-inventory-reserved-noble-cards .noble-card:hover img {
+    top: 0;
+  }
+
+  .player-inventory-mod-panel {
+    width: 100%;
+    font-size: 0.8rem;
+  }
+}

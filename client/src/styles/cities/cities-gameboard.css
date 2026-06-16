@@ -88,3 +88,48 @@
   top: -33.33%;
 }
   
+/* Responsive cities board additions ----------------------------------------- */
+@media (width <= 700px) {
+  .board-container {
+    order: 1;
+    width: 100%;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.65rem;
+    padding-left: 0;
+    overflow: visible;
+  }
+
+  .board-container > .cities-container {
+    order: 2;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.45rem;
+    font-size: clamp(0.5rem, 2.4vw, 0.75rem);
+  }
+
+  .board-container > .board {
+    order: 1;
+  }
+
+  .city-card > img {
+    height: clamp(2.4rem, 14vw, 3.7rem);
+  }
+
+  .player-inventory-cities {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .player-inventory-cities .city-card:not(:first-child) {
+    margin-left: 0;
+  }
+
+  .other-inventory-cities .city-card:hover img {
+    top: 0;
+  }
+}

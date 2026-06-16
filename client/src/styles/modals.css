@@ -407,3 +407,105 @@
   color: goldenrod;
   cursor: pointer;
 }
+
+/* Responsive modal layout ---------------------------------------------------- */
+@media (width <= 900px), (height <= 700px) {
+  .modal {
+    align-items: flex-start;
+    padding: 0.75rem 0.5rem;
+  }
+
+  .modal-container {
+    width: min(96vw, 42rem);
+    min-height: auto;
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-content {
+    min-height: auto;
+    padding: clamp(0.75rem, 3vw, 1.25rem);
+  }
+
+  .modal-content h1 {
+    font-size: clamp(2rem, 11vw, 4.5em);
+  }
+
+  .modal-content h2 {
+    font-size: clamp(1.15rem, 5vw, 1.5em);
+  }
+
+  .turn-button-container,
+  .button-container {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .get-tokens-btn,
+  .purchase-btn,
+  .reserve-btn {
+    width: min(18rem, 82vw);
+    height: auto;
+    min-height: 3.25rem;
+    aspect-ratio: auto;
+    border-radius: 1rem;
+    font-size: clamp(1rem, 4.8vw, 1.35rem);
+    padding: 0.65rem 1rem;
+  }
+
+  .buy-card-back-btn,
+  .buy-card-confirm-btn,
+  .reserve-card-back-btn,
+  .reserve-card-confirm-btn,
+  .restart-no-btn,
+  .restart-yes-btn,
+  .save-back-btn,
+  .save-confirm-btn,
+  .take-token-back-btn,
+  .take-token-confirm-btn,
+  .cascade-back-btn,
+  .cascade-confirm-btn,
+  .put-back-token-back-btn,
+  .put-back-token-confirm-btn,
+  .satchel-confirm-btn,
+  .extra-token-confirm-btn {
+    border-radius: 0.9rem;
+    font-size: clamp(0.9rem, 4.2vw, 1.15rem);
+    padding: 0.65rem 0.9rem;
+  }
+
+  .buy-card-board,
+  .reserve-card-board,
+  #buy-card-board {
+    width: 100%;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  #buy-card-board .reserved-cards {
+    flex-direction: row;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .modal-board-cards {
+    width: 100%;
+    align-items: center;
+    overflow-x: auto;
+    font-size: clamp(0.48rem, 2.23vw, 0.72rem);
+    --board-deck-margin: 0.45em;
+  }
+
+  .modal-board-cards .board-cards-row {
+    justify-content: center;
+  }
+
+  #buy-card-board .board-card-dev:hover,
+  .modal-board-cards .board-card-dev:hover,
+  .purchase-show-card.board-card-dev:hover {
+    transform: none;
+  }
+}
