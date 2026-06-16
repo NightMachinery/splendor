@@ -1,42 +1,46 @@
 
-export enum CostType {
-    Token = "Token",
-    Bonus = "Bonus"
-}
+export const CostType = {
+    Token: "Token",
+    Bonus: "Bonus"
+} as const;
+export type CostType = typeof CostType[keyof typeof CostType];
 
-export enum TokenType {
-    Green = "Green",
-    White = "White",
-    Blue = "Blue",
-    Brown = "Brown",
-    Red = "Red",
-    Gold = "Gold",
-    Satchel = "Satchel"
-}
+export const TokenType = {
+    Green: "Green",
+    White: "White",
+    Blue: "Blue",
+    Brown: "Brown",
+    Red: "Red",
+    Gold: "Gold",
+    Satchel: "Satchel"
+} as const;
+export type TokenType = typeof TokenType[keyof typeof TokenType];
 export const allTokens = [ // amazing
     TokenType.Green, TokenType.White, TokenType.Blue, TokenType.Brown,
     TokenType.Red, TokenType.Gold, TokenType.Satchel
 ];
 
-export enum CascadeType {
-    Tier1 = "Tier1", Tier2 = "Tier2", None = "None"
-}
+export const CascadeType = {
+    Tier1: "Tier1", Tier2: "Tier2", None: "None"
+} as const;
+export type CascadeType = typeof CascadeType[keyof typeof CascadeType];
 
-export enum Actions {
-    BUY_CARD = "BUY_CARD",
-    TAKE_TOKEN = "TAKE_TOKEN",
-    RESERVE_CARD = "RESERVE_CARD",
-    CHOOSE_NOBLE = "CHOOSE_NOBLE",
+export const Actions = {
+    BUY_CARD: "BUY_CARD",
+    TAKE_TOKEN: "TAKE_TOKEN",
+    RESERVE_CARD: "RESERVE_CARD",
+    CHOOSE_NOBLE: "CHOOSE_NOBLE",
 
     // Orient
-    CASCADE_1 = "CASCADE_1",
-    CASCADE_2 = "CASCADE_2",
-    RESERVE_NOBLE = "RESERVE_NOBLE",
-    CHOOSE_SATCHEL_TOKEN = "CHOOSE_SATCHEL_TOKEN",
+    CASCADE_1: "CASCADE_1",
+    CASCADE_2: "CASCADE_2",
+    RESERVE_NOBLE: "RESERVE_NOBLE",
+    CHOOSE_SATCHEL_TOKEN: "CHOOSE_SATCHEL_TOKEN",
 
-    // Trading 
-    TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER = "TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER"
-}
+    // Trading
+    TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER: "TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER"
+} as const;
+export type Actions = typeof Actions[keyof typeof Actions];
 
 class Player {
     name: string;

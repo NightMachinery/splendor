@@ -1,14 +1,14 @@
 import { type Page } from '@playwright/test';
 import { Game, Actions, NobleCard, allTokens, OrientDevCard, TokenType, DevCard } from "./game.js";
-import crypto from "crypto-js";
+import { createHash } from "node:crypto";
 
-const { MD5 } = crypto;
+const MD5 = (data: string) => createHash("md5").update(data).digest("hex");
 
 // maybe there's a better way to specify the routes (w/ ports)?
 
 export const mockGameState = (page: Page, gamestate: Game) => {
     const data = JSON.stringify(gamestate);
-    const hash = MD5(data).toString();
+    const hash = MD5(data);
 
     page.route("**/api/sessions/*?hash=**", route => {
         const url = new URL(route.request().url());

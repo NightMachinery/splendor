@@ -1,4 +1,4 @@
-import { test, expect, Locator, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { Actions, DevCard, OrientDevCard, TokenType } from "./util/game.js";
 import { mockGetUsername } from "./util/ls-mock.js";
 import { checkActionRequest, verifyModalCloses } from "./util/modal-util.js";
@@ -10,7 +10,7 @@ test.describe.parallel("Test orient modals", () => {
     test.beforeEach(async ({ page }) => {
         // page.on('console', msg => console.log(msg.location().url + " - [" + msg.location().lineNumber + "]: " + msg.text()))
 
-        mockGetUsername(page, MAIN_USER);
+        await mockGetUsername(page, MAIN_USER);
         const game = createBasicGame();
         mockGameState(page, game);
         await page.goto("/gameboard/?sessionId=123");

@@ -10,7 +10,7 @@ test.describe.parallel("Test orient game", () => {
 
         const game = createBasicGame();
         await mockGameState(page, game);
-        mockGetUsername(page, MAIN_USER);
+        await mockGetUsername(page, MAIN_USER);
         await page.goto("/gameboard/?sessionId=123");
     });
 
