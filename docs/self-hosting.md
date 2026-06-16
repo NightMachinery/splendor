@@ -1,89 +1,73 @@
 # Self-hosting Splendor
 
-This repository can be self-hosted without Docker using Caddy and tmux.
-
-## Requirements
-
-Install these tools on the host:
-
-- Java and Maven
-- Node/pnpm
-- Caddy
-- tmux
-
-If your network needs a proxy, export the proxy variables in your shell before running the script. `self_host.py` passes existing proxy variables into tmux sessions, but does not hardcode proxy settings.
+Splendor can run without Docker on one machine using tmux-managed services and a
+Caddy reverse proxy. The helper script manages builds, ports, Caddy config, and
+service sessions.
 
 ## Commands
-
-From the repository root:
 
 ```bash
 ./self_host.py setup [--url https://splendor.pinky.lilf.ir]
 ./self_host.py redeploy [--url https://splendor.pinky.lilf.ir]
 ./self_host.py start [--url https://splendor.pinky.lilf.ir]
-./self_host.py stop
 ./self_host.py dev-start [--url https://splendor.pinky.lilf.ir]
+./self_host.py stop
+./self_host.py status
 ```
 
-Default URL is `https://splendor.pinky.lilf.ir`.
+- `setup` stops any existing tmux sessions, installs/builds everything, then
+  starts production hosting.
+- `redeploy` stops, rebuilds latest local changes, and starts production hosting.
+- `start` stops both production/dev sessions and starts from already-built
+  artifacts.
+- `dev-start` stops existing sessions, builds backend jars, starts the Astro dev
+  server for hot reload, and points Caddy at it. On macOS it serves directly on
+  localhost and prints that local URL.
+- `stop` kills the Splendor tmux sessions.
+- `status` prints persisted ports and tmux session state.
 
-- `setup` stops managed sessions, installs/builds, updates `~/Caddyfile`, and starts production.
-- `redeploy` stops managed sessions, rebuilds latest local changes, updates Caddy, and starts production.
-- `start` stops both production and development sessions before starting production.
-- `dev-start` stops both modes, starts Astro's hot-reload dev server, and rewrites the Caddy block to proxy the frontend to it.
-- `stop` kills only tmux sessions managed by this script.
+The default URL is `https://splendor.pinky.lilf.ir`. If the configured URL is
+HTTPS, the script also adds an HTTP-to-HTTPS redirect block. If the configured URL
+is HTTP, it adds an HTTPS-to-HTTP redirect block.
 
-During startup, the script waits for LobbyService to answer `/api/online` before starting the game server, so game registration is not racing the lobby boot.
+## Runtime layout
 
-The script checks required local ports before startup. Current ports are:
+- Lobby Service: tmux session `splendor-lobby`
+- Game Service: tmux session `splendor-game`
+- Astro dev server: tmux session `splendor-client-dev` (`dev-start` only)
+- Persistent local data: `.self-host/`
+- Caddy config block: `~/Caddyfile`, delimited by `# BEGIN splendor self-host
+  managed block` and `# END ...`
 
-- Lobby service: `34172`
-- Game server: `33402`
-- Astro dev server: `3000`
+Production hosting serves static files directly from Caddy using
+`client/dist`; no extra static file server is kept running. API paths are proxied:
 
-## Caddy
+- `/ls/*` -> Lobby Service
+- `/gs/*` -> Game Service
 
-`self_host.py` maintains a marked Splendor block in `~/Caddyfile` and reloads Caddy. In production, Caddy serves `client/dist` directly and proxies API paths:
+## Ports
 
-- `/ls/*` → LobbyService
-- `/gs/*` → Splendor game server
+The helper defaults to uncommon local ports and persists the last used values in
+`.self-host/ports.json`. If a chosen port is busy, it scans upward for a free
+port and stores the replacement.
 
-If the configured URL is HTTPS, the script adds an explicit HTTP→HTTPS redirect block. If the configured URL is HTTP, it adds an HTTPS→HTTP redirect block.
+## Dependencies
 
-## Authentication
+Install these tools on the host:
 
-Self-hosted auth is local and intranet-friendly. The browser stores a random auth token and display name in `localStorage`; the LobbyService associates that token with the user's display name so the user is not prompted again on refresh. If the browser has no local display name, protected pages redirect straight to the display-name login page instead of showing an in-page prompt.
+- Java 17+
+- Maven
+- pnpm
+- tmux
+- Caddy
 
-No external captcha, Google service, or password entry is required for normal self-hosted play. The account settings page keeps colour/account controls but hides password controls, and the shared nav intentionally omits logout to avoid accidentally discarding the local browser identity.
+Use pnpm for frontend dependencies. The script passes through any existing proxy
+environment variables (`ALL_PROXY`, `http_proxy`, `npm_config_proxy`, etc.) to
+pnpm/Maven and tmux sessions, but does not hardcode a proxy.
 
-The login page redirects back to the homepage when a local identity already exists. UI error toasts are also mirrored to the browser console for easier copy/paste debugging.
+## Intranet/local operation
 
-
-## Generated profile avatars
-
-Player profile icons are generated locally in the browser from the room identity using `nice-avatar-svg`, so profile pictures do not rely on external avatar services and remain stable for the same local account.
-
-## Player recovery and moderation
-
-The self-hosted lobby exposes player management without requiring typed internal IDs. In the lobby, expand a session's **Players / Moderation** panel to see server-provided display aliases, internal IDs on hover, and badges for the current user, owner/mod/temp-mod, and observers.
-
-Allowed actions appear as icon buttons next to each player:
-
-- Copy a migrate link for yourself, or for any player if you are a moderator. The link opens the board as that room identity and is useful after browser storage is cleared or a device changes.
-- Move yourself back from observer to player. Moderators can also move other players between player and observer status.
-- Promote players to moderator. Demoting moderators remains restricted to the session creator by the LobbyService.
-
-The same badges and moderation buttons are also shown on player panels in launched game boards, so creators and moderators can recover or adjust players after the game starts. Non-moderators only see actions the backend already allows for their own identity.
-
-## Development
-
-Use `dev-start` while changing client code. It leaves the Java services running in tmux and proxies the frontend through Caddy to Astro, so HMR works through the configured URL.
-
-Inspect sessions with:
-
-```bash
-tmux ls
-tmux attach -t splendor-lobby
-tmux attach -t splendor-game
-tmux attach -t splendor-client-dev
-```
+The app is intended to work over HTTP as well as HTTPS. Browser APIs such as
+clipboard use local fallbacks where needed, and the frontend determines service
+URLs from the current origin (`/ls` and `/gs`) rather than hardcoding a public
+server.
