@@ -1,0 +1,289 @@
+/*
+ * Board design tokens. See docs/ui/foundations.md.
+ *
+ * This is the only file that may hold raw z-index numbers, 100vh / 100dvh
+ * and env(safe-area-inset-*); everything else reads the custom properties
+ * below (client/tools/lint-css.mjs enforces this).
+ *
+ * Ownership: WP-FOUND, then WP-LAYOUT (geometry values only), then frozen.
+ * Other packages define package-local properties named --sp-<pkg>-* in their
+ * own files instead of adding tokens here.
+ *
+ * Every derived token (--sp-card-h, --sp-pip, --sp-card-w itself) is declared
+ * on :root, so it resolves against the :root values. A rule that redeclares
+ * --sp-card-w on a descendant must redeclare --sp-card-h and --sp-pip there
+ * too, or they keep the :root size.
+ */
+
+/* Judson, self-hosted under /fonts/judson/ (SIL OFL 1.1, see OFL.txt there).
+   No font CDN at runtime: the app has to work offline and on an intranet. */
+@font-face {
+  font-family: "Judson";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/judson/judson-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Judson";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/judson/judson-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Judson";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/judson/judson-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Judson";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/judson/judson-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* ---- Colours. Text tokens are at least 4.5:1 on --sp-bg and both
+     surfaces (node tools/lint-css.mjs --contrast). ---- */
+  --sp-bg: #0b1422;
+  --sp-surface-1: #12203a;
+  --sp-surface-2: #1a2b4a;
+  --sp-line: rgba(255, 255, 255, 0.12);
+  --sp-text: #f3efe6;
+  --sp-text-muted: #aab4c8;
+  --sp-gold: #e8b84a;
+  --sp-gold-ink: #1d1503;
+  --sp-ok: #4cc38a;
+  --sp-warn: #f0a020;
+  --sp-danger: #ff6b5e;
+  --sp-focus: #ffd76a;
+  --sp-scrim: rgba(5, 10, 20, 0.55);
+  --sp-final: #b3263e;
+
+  /* ---- Gems. Numeral ink: dark on White and Gold, white on the others.
+     Each gem also has its own sprite shape (SpSprite.astro), so colour is
+     never the only cue. ---- */
+  --sp-gem-white: #f2efe8;
+  --sp-gem-blue: #2f6fd6;
+  --sp-gem-green: #2f9e5a;
+  --sp-gem-red: #d43c3c;
+  --sp-gem-brown: #6e4b32;
+  --sp-gem-gold: #e8b84a;
+  --sp-gem-ink-dark: #161616;
+  --sp-gem-ink-light: #ffffff;
+
+  /* Deck tabs, sampled from the deck backs (no raster). */
+  --sp-tier-1: #2e7d4f;
+  --sp-tier-2: #c9a227;
+  --sp-tier-3: #2c5aa0;
+  --sp-tier-orient: #b5452f;
+
+  /* ---- Type. Numerals are tabular (.sp-num and the primitives). Nothing
+     goes below 12px except pip numerals (--sp-fs-pip). ---- */
+  --sp-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --sp-font-display: "Judson", Georgia, serif;
+  --sp-fs-pip: 11px;
+  --sp-fs-xs: 12px;
+  --sp-fs-sm: 14px;
+  --sp-fs-md: 16px; /* body and inputs, so iOS never zooms on focus */
+  --sp-fs-lg: 20px;
+  --sp-fs-xl: 24px;
+
+  /* ---- Spacing and shape ---- */
+  --sp-space-1: 4px;
+  --sp-space-2: 8px;
+  --sp-space-3: 12px;
+  --sp-space-4: 16px;
+  --sp-space-5: 24px;
+  --sp-space-6: 32px;
+  --sp-r-1: 6px; /* cards, slots, chips */
+  --sp-r-2: 10px; /* buttons */
+  --sp-r-3: 16px; /* sheets */
+  --sp-r-pill: 999px;
+  --sp-tap: 44px;
+
+  /* ---- Z ladder: the only place raw z-index numbers appear. Sheets never
+     overlap the HUD region, so the HUD sits above them and the menu stays
+     reachable during a mandatory follow-up. ---- */
+  --z-backdrop: -1; /* page backdrop layer (.sp-board-backdrop) */
+  --z-board: 0;
+  --z-raised: 1;
+  --z-dock: 30;
+  --z-dock-top: 31; /* the fixed bank */
+  --z-flight: 40;
+  --z-sheet: 50;
+  --z-hud: 55;
+  --z-result: 60;
+  --z-drawer: 70; /* the menu drawer */
+  --z-menu-modal: 80; /* save, restart, quit */
+  --z-toast: 90; /* toasts and the connection indicator */
+
+  /* ---- Motion ---- */
+  --sp-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sp-dur-1: 120ms;
+  --sp-dur-2: 200ms;
+  --sp-dur-3: 320ms;
+  /* 1 normally, 0 under reduced motion: multiply travel distances by it,
+     e.g. translateY(calc(16px * var(--sp-motion))). */
+  --sp-motion: 1;
+
+  /* ---- Geometry: P (portrait phone) values; the layout classes below
+     override them. Formulas follow section 4 of the UX spec. ---- */
+  --sp-vh: 100vh;
+  --sp-safe-t: env(safe-area-inset-top, 0px);
+  --sp-safe-r: env(safe-area-inset-right, 0px);
+  --sp-safe-b: env(safe-area-inset-bottom, 0px);
+  --sp-safe-l: env(safe-area-inset-left, 0px);
+  --sp-gutter: 8px;
+  --sp-content-max: 640px;
+
+  --sp-hud-h: 48px; /* 76px with 3-4 players, 56px on T, D and W */
+  --sp-dock-h: 140px; /* bank band + holdings + action bar + 8px of gaps */
+  --sp-bank-h: 48px;
+  --sp-hold-h: 32px; /* 44px in putback mode: use --sp-tap there */
+  --sp-bar-h: 52px;
+
+  /* Landscape phone (L) rails and goals. */
+  --sp-l-left: clamp(128px, 18vw, 168px);
+  --sp-l-right: clamp(148px, 21vw, 188px);
+  --sp-l-hud-h: 76px; /* 108px with 3-4 players */
+  --sp-l-goal: 36px;
+  --sp-l-goals-h: var(--sp-l-goal);
+
+  /* Desktop (D) side column; wide (W) left and right columns. */
+  --sp-side-w: clamp(300px, 26vw, 360px);
+  --sp-w-left: clamp(300px, 18vw, 360px);
+  --sp-w-right: clamp(320px, 20vw, 380px);
+  --sp-rail-max: var(--sp-content-max); /* bank and holdings max width */
+
+  /* Market. */
+  --sp-deck-w: 18px;
+  --sp-noble: 44px;
+  --sp-card-w: min(84px, calc((min(100vw, var(--sp-content-max)) - 2 * var(--sp-gutter) - var(--sp-deck-w) - 4px - 20px - 4px) / 6));
+  --sp-card-h: calc(var(--sp-card-w) * 7 / 5);
+  --sp-pip: clamp(14px, calc(var(--sp-card-w) * 0.28), 22px);
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --sp-vh: 100dvh;
+  }
+}
+
+/* Test-only safe-area insets, so notch maths can be checked in Chromium (V4i). */
+html[data-sp-test-insets] {
+  --sp-safe-l: 47px;
+  --sp-safe-r: 47px;
+  --sp-safe-b: 21px;
+}
+
+/* 3-4 players: a 28px score-strip row is added to the HUD on P, and a 2x2
+   score-chip grid to the left-rail HUD on L. */
+body[data-sp-players="3"],
+body[data-sp-players="4"] {
+  --sp-hud-h: 76px;
+  --sp-l-hud-h: 108px;
+}
+
+/* Gutter switch from 400px wide (a non-layout token switch). */
+@media (min-width: 400px) {
+  :root {
+    --sp-gutter: 12px;
+  }
+}
+
+/* L: landscape phone. Card width is the smaller of the height bound and the
+   inset-aware width bound (V4 72.8px, V4i 59.8px). */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --sp-noble: var(--sp-l-goal);
+    --sp-bank-h: 44px;
+    --sp-hold-h: 22px;
+    --sp-card-w: min(
+      calc((var(--sp-vh) - var(--sp-safe-b) - 16px - var(--sp-l-goals-h) - 4px - 8px) / 3 * 5 / 7),
+      calc((100vw - max(8px, var(--sp-safe-l)) - max(8px, var(--sp-safe-r)) - var(--sp-l-left) - var(--sp-l-right) - 16px - var(--sp-deck-w) - 4px - 20px - 4px) / 6)
+    );
+  }
+}
+
+/* T: tablet (V5 108.7px cards). */
+@media (min-width: 700px) and (min-height: 501px) {
+  :root,
+  body[data-sp-players] {
+    --sp-hud-h: 56px;
+  }
+
+  :root {
+    --sp-gutter: 16px;
+    --sp-content-max: 760px;
+    --sp-dock-h: 160px;
+    --sp-bank-h: 56px;
+    --sp-hold-h: 36px;
+    --sp-bar-h: 60px;
+    --sp-deck-w: 24px;
+    --sp-noble: 72px;
+    --sp-card-w: min(112px, calc((min(100vw, var(--sp-content-max)) - 2 * var(--sp-gutter) - var(--sp-deck-w) - 4px - 40px - 8px) / 6));
+  }
+}
+
+/* D: desktop and iPad landscape. --sp-main-w is the market column of the
+   "market opp / market you / dock you" grid, assuming 16px page padding and
+   a 16px column gap (V6 117.6px cards, 1024x768 98px). */
+@media (min-width: 1024px) and (min-height: 501px) {
+  :root {
+    --sp-dock-h: 116px; /* holdings 36 + 8 gap + bar 72 */
+    --sp-bank-h: 48px; /* in flow at the bottom of #board */
+    --sp-hold-h: 36px;
+    --sp-bar-h: 72px;
+    --sp-rail-max: 560px;
+    --sp-noble: 72px;
+    --sp-main-w: calc(100vw - 32px - var(--sp-side-w) - 16px);
+    --sp-card-w: min(
+      132px,
+      calc((var(--sp-main-w) - 76px) / 6),
+      calc((var(--sp-vh) - var(--sp-hud-h) - 16px - (var(--sp-noble) + 8px) - var(--sp-bank-h) - 8px - var(--sp-dock-h) - 16px - 16px) / 3 * 5 / 7)
+    );
+  }
+}
+
+/* W: wide. Three columns "opp market you / hist market you / hist dock you";
+   decks show full art at both ends of each row (V7 143.3px cards). */
+@media (min-width: 1600px) and (min-height: 800px) {
+  :root {
+    --sp-noble: 96px;
+    --sp-side-w: var(--sp-w-right);
+    --sp-main-w: calc(100vw - 32px - var(--sp-w-left) - var(--sp-w-right) - 32px);
+    --sp-card-w: min(
+      150px,
+      calc((var(--sp-main-w) - 64px) / 7.44),
+      calc((var(--sp-vh) - var(--sp-hud-h) - 16px - (var(--sp-noble) + 8px) - var(--sp-bank-h) - 8px - var(--sp-dock-h) - 16px - 16px) / 3 * 5 / 7)
+    );
+    --sp-deck-w: calc(var(--sp-card-w) * 0.72);
+  }
+}
+
+/* Reduced motion: no travel, and crossfades of 120ms at most. Flights, sheen,
+   shake and confetti are switched off by their owners on the same signals.
+   html[data-sp-motion="off"] mirrors the media query for tests and for the
+   in-game "Reduce motion" setting. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sp-motion: 0;
+    --sp-dur-2: 120ms;
+    --sp-dur-3: 120ms;
+  }
+}
+
+html[data-sp-motion="off"] {
+  --sp-motion: 0;
+  --sp-dur-2: 120ms;
+  --sp-dur-3: 120ms;
+}

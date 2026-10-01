@@ -1,0 +1,86 @@
+---
+// Inline SVG sprite: gem shapes and UI icons. Render it once per page, at the
+// start of <body>, and reference a symbol with
+//   <svg class="sp-gem" data-sp-color="Red" aria-hidden="true"><use href="#sp-gem-Red"></use></svg>
+//   <svg class="sp-icon" aria-hidden="true"><use href="#sp-i-menu"></use></svg>
+// 24x24 viewBox, 2px strokes in currentColor. Each gem has its own shape so
+// colour is never the only cue; gem bodies are a 30% tint of currentColor.
+// Keep this file under 8KB. See docs/ui/foundations.md.
+---
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;overflow:hidden">
+  <defs>
+    <symbol id="sp-gem-White" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M12 2.5 20.5 12 12 21.5 3.5 12Z" fill="currentColor" fill-opacity=".3"/>
+      <path d="M3.5 12h17M8 7h8"/>
+    </symbol>
+    <symbol id="sp-gem-Blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4 4h16v16H4Z" fill="currentColor" fill-opacity=".3"/>
+      <path d="M8.5 8.5h7v7h-7ZM4 4l4.5 4.5M20 4l-4.5 4.5M4 20l4.5-4.5M20 20l-4.5-4.5"/>
+    </symbol>
+    <symbol id="sp-gem-Green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M8.5 2h7L19 5.5v13L15.5 22h-7L5 18.5v-13Z" fill="currentColor" fill-opacity=".3"/>
+      <path d="M9.5 7h5v10h-5Z"/>
+    </symbol>
+    <symbol id="sp-gem-Red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9.5" fill="currentColor" fill-opacity=".3"/>
+      <path d="M12 2.5 14.5 9.5 21.5 12 14.5 14.5 12 21.5 9.5 14.5 2.5 12 9.5 9.5Z"/>
+    </symbol>
+    <symbol id="sp-gem-Brown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M12 2 20.7 7v10L12 22l-8.7-5V7Z" fill="currentColor" fill-opacity=".3"/>
+      <path d="M12 7.5 16 9.75v4.5L12 16.5l-4-2.25v-4.5Z"/>
+    </symbol>
+    <symbol id="sp-gem-Gold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9.5" fill="currentColor" fill-opacity=".3"/>
+      <path d="M12 6.5 13.6 10l3.7.3-2.8 2.5.9 3.7L12 14.6l-3.4 1.9.9-3.7-2.8-2.5 3.7-.3Z" fill="currentColor"/>
+    </symbol>
+
+    <symbol id="sp-i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M4 6h16M4 12h16M4 18h16"/>
+    </symbol>
+    <symbol id="sp-i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5"/>
+      <path d="M3.5 3.5v5h5M12 7.5V12l3 2"/>
+    </symbol>
+    <symbol id="sp-i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M6 6l12 12M18 6 6 18"/>
+    </symbol>
+    <symbol id="sp-i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="sp-i-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4 17 3 7l5 4 4-6 4 6 5-4-1 10Z"/>
+      <path d="M4 20.5h16"/>
+    </symbol>
+    <symbol id="sp-i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="5" y="10.5" width="14" height="10" rx="2"/>
+      <path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/>
+    </symbol>
+    <symbol id="sp-i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M5 12.5 9.5 17 19 7.5"/>
+    </symbol>
+    <symbol id="sp-i-cascade" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="3" y="2.5" width="9" height="12" rx="1.5"/>
+      <rect x="12" y="9.5" width="9" height="12" rx="1.5"/>
+      <path d="M7.5 17.5v3h3"/>
+    </symbol>
+    <symbol id="sp-i-satchel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4.5 9h15l-1.2 11.5H5.7Z"/>
+      <path d="M9 9V7a3 3 0 0 1 6 0v2M9.5 13.5h5"/>
+    </symbol>
+    <symbol id="sp-i-sacrifice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M12 2.5c.5 3.5 6 6 6 11.5a6 6 0 0 1-12 0c0-2.8 1.5-4.3 2.5-5.5.3 2 1.3 3 2.5 3.5-.6-3.2 0-6.5 1-9.5Z"/>
+    </symbol>
+    <symbol id="sp-i-noble" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <circle cx="12" cy="11.5" r="3.5"/>
+      <path d="M4.5 21.5a7.5 7.5 0 0 1 15 0M8.5 5.5v-3l1.75 1.5L12 2l1.75 2 1.75-1.5v3Z"/>
+    </symbol>
+    <symbol id="sp-i-city" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M2.5 21h19M4.5 21V11l4-3v13M8.5 21V4h7v17M15.5 21V9h4v12"/>
+      <path d="M11 8h2M11 12h2M11 16h2"/>
+    </symbol>
+    <symbol id="sp-i-offline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M2 8.5a15 15 0 0 1 20 0M5 12a10.5 10.5 0 0 1 14 0M8.5 15.5a5.5 5.5 0 0 1 7 0M12 19.5h.01M3 3l18 18"/>
+    </symbol>
+  </defs>
+</svg>

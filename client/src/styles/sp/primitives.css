@@ -1,0 +1,212 @@
+/*
+ * Shared primitives. See docs/ui/foundations.md.
+ *
+ * Needs tokens.css. Everything is class- or attribute-based; the only bare
+ * selector is the :focus-visible ring. Hover polish lives inside the hover
+ * media query only, so nothing depends on hover.
+ */
+
+/* ---- Colour context: any element with data-sp-color gets the gem colour
+   and its numeral ink as --sp-color / --sp-color-ink, for pips, gems,
+   borders and badges alike. ---- */
+[data-sp-color="White"] {
+  --sp-color: var(--sp-gem-white);
+  --sp-color-ink: var(--sp-gem-ink-dark);
+}
+[data-sp-color="Blue"] {
+  --sp-color: var(--sp-gem-blue);
+  --sp-color-ink: var(--sp-gem-ink-light);
+}
+[data-sp-color="Green"] {
+  --sp-color: var(--sp-gem-green);
+  --sp-color-ink: var(--sp-gem-ink-light);
+}
+[data-sp-color="Red"] {
+  --sp-color: var(--sp-gem-red);
+  --sp-color-ink: var(--sp-gem-ink-light);
+}
+[data-sp-color="Brown"] {
+  --sp-color: var(--sp-gem-brown);
+  --sp-color-ink: var(--sp-gem-ink-light);
+}
+[data-sp-color="Gold"] {
+  --sp-color: var(--sp-gem-gold);
+  --sp-color-ink: var(--sp-gem-ink-dark);
+}
+
+/* ---- Buttons ---- */
+.sp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-space-2);
+  box-sizing: border-box;
+  min-width: var(--sp-tap);
+  min-height: var(--sp-tap);
+  margin: 0;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--sp-r-2);
+  background: transparent;
+  color: var(--sp-text);
+  font: 600 var(--sp-fs-md) / 1.2 var(--sp-font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--sp-dur-1) var(--sp-ease), opacity var(--sp-dur-1) var(--sp-ease);
+}
+.sp-btn-primary {
+  background: var(--sp-gold);
+  color: var(--sp-gold-ink);
+}
+.sp-btn-secondary {
+  background: var(--sp-surface-2);
+  border-color: var(--sp-line);
+}
+.sp-btn-quiet {
+  background: transparent;
+}
+.sp-btn[aria-disabled="true"],
+.sp-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The line under a disabled control that says why. */
+.sp-reason {
+  display: block;
+  margin-top: var(--sp-space-1);
+  color: var(--sp-text-muted);
+  font: 400 var(--sp-fs-xs) / 1.3 var(--sp-font-ui);
+}
+
+/* ---- Chips and badges ---- */
+.sp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-space-1);
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 0 var(--sp-space-2);
+  border: 1px solid var(--sp-line);
+  border-radius: var(--sp-r-1);
+  background: var(--sp-surface-2);
+  color: var(--sp-text);
+  font: 600 var(--sp-fs-sm) / 1 var(--sp-font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sp-badge {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--sp-r-pill);
+  background: var(--sp-gold);
+  color: var(--sp-gold-ink);
+  font: 800 var(--sp-fs-xs) / 1 var(--sp-font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Pips and gems ---- */
+/* A cost or count pip: <span class="sp-pip" data-sp-color="Red">3</span>.
+   Numerals are 11px only inside pips; everything else is 12px or more. */
+.sp-pip {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--sp-pip);
+  height: var(--sp-pip);
+  border-radius: 50%;
+  background: var(--sp-color, var(--sp-surface-2));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  color: var(--sp-color-ink, var(--sp-text));
+  font: 800 var(--sp-fs-pip) / 1 var(--sp-font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A gem shape from SpSprite.astro:
+   <svg class="sp-gem" data-sp-color="Red" aria-hidden="true"><use href="#sp-gem-Red"></use></svg>
+   The symbol picks the shape, data-sp-color the colour. */
+.sp-gem {
+  display: inline-block;
+  flex: none;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+  color: var(--sp-color, currentColor);
+  overflow: visible;
+}
+
+/* Any other sprite icon: <svg class="sp-icon" aria-hidden="true"><use href="#sp-i-menu"></use></svg> */
+.sp-icon {
+  display: inline-block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+/* ---- Affordability rings (2px gold, solid or dashed, drawn inside the box
+   so neighbours 4px apart never overlap). A keyboard focus ring replaces
+   the ring while the element is focused. ---- */
+.sp-ring-yes {
+  outline: 2px solid var(--sp-gold);
+  outline-offset: -2px;
+}
+.sp-ring-gold {
+  outline: 2px dashed var(--sp-gold);
+  outline-offset: -2px;
+}
+
+/* ---- Utilities ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sp-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Focus ring: 2px --sp-focus with a 2px offset, keyboard only. ---- */
+:focus-visible {
+  outline: 2px solid var(--sp-focus);
+  outline-offset: 2px;
+}
+
+/* ---- Hover polish (fine pointers only). ---- */
+@media (hover: hover) and (pointer: fine) {
+  .sp-btn:hover:not([aria-disabled="true"]):not(:disabled) {
+    filter: brightness(1.08);
+  }
+}
+
+/* Pressed state, after the hover rule so it wins while pressing. */
+.sp-btn:active:not([aria-disabled="true"]):not(:disabled) {
+  filter: brightness(0.92);
+}
