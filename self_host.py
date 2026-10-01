@@ -97,7 +97,9 @@ def tmux_env_args(extra_env=None):
 
 
 def tmux_kill(name):
-    subprocess.run(["tmux", "kill-session", "-t", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # "=" makes tmux match the exact session name. A bare -t falls back to
+    # prefix matching and could kill another instance's session.
+    subprocess.run(["tmux", "kill-session", "-t", f"={name}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def tmux_new(name, cmd, cwd=ROOT, extra_env=None):
@@ -124,32 +126,101 @@ def port_busy(port):
         return s.connect_ex(("127.0.0.1", int(port))) == 0
 
 
-def first_free(start):
+def port_bindable(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("0.0.0.0", int(port)))
+        except OSError:
+            return False
+    return True
+
+
+def port_free(port):
+    return not port_busy(port) and port_bindable(port)
+
+
+def first_free(start, exclude=()):
     p = int(start)
     while p < 65535:
-        if not port_busy(p):
+        if p not in exclude and port_free(p):
             return p
         p += 1
     raise SystemExit(f"Could not find a free port at or above {start}")
 
 
+def read_ports():
+    """Return the recorded ports without probing or rewriting anything."""
+    try:
+        return {**DEFAULT_PORTS, **json.loads(PORTS_FILE.read_text())}
+    except Exception:
+        return dict(DEFAULT_PORTS)
+
+
+def tmux_alive(name):
+    return subprocess.run(["tmux", "has-session", "-t", f"={name}"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
 def ports(reset=False):
+    """Choose the ports for a start, after our own sessions were stopped.
+
+    A recorded port stays as long as it is free, or is still held by our own
+    tmux session for that role. Only a port held by some other program moves,
+    and ports.json is rewritten only when something actually moved.
+    """
     DATA.mkdir(exist_ok=True)
-    if reset or not PORTS_FILE.exists():
-        current = dict(DEFAULT_PORTS)
-    else:
-        try:
-            current = {**DEFAULT_PORTS, **json.loads(PORTS_FILE.read_text())}
-        except Exception:
-            current = dict(DEFAULT_PORTS)
-    changed = False
+    current = dict(DEFAULT_PORTS) if reset else read_ports()
+    changed = reset or not PORTS_FILE.exists()
+    taken = set()
     for name, default in DEFAULT_PORTS.items():
-        if port_busy(current[name]):
-            current[name] = first_free(default)
+        port = int(current[name])
+        if port in taken or (not port_free(port) and not tmux_alive(SESSIONS[name])):
+            port = first_free(default, exclude=taken)
             changed = True
-    if changed or reset or not PORTS_FILE.exists():
+        current[name] = port
+        taken.add(port)
+    if changed:
         PORTS_FILE.write_text(json.dumps(current, indent=2) + "\n")
     return current
+
+
+def listener_pids(port):
+    out = subprocess.run(["lsof", "-nP", f"-iTCP:{int(port)}", "-sTCP:LISTEN", "-t"],
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout
+    return sorted({int(x) for x in out.split() if x.strip().isdigit()})
+
+
+def process_command(pid):
+    return subprocess.run(["ps", "-o", "command=", "-p", str(int(pid))],
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
+
+
+def release_ports(owned, timeout=20):
+    """Wait until each port in owned ({port: marker}) is released.
+
+    tmux kill-session returns before the JVM closes its socket. If a listener
+    survives the timeout and its command line contains our marker (for
+    example the jar path plus --server.port=N), it is an orphan of ours and
+    is killed by PID. Foreign listeners are reported, never killed.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline and any(port_busy(p) for p in owned):
+        time.sleep(0.5)
+    for port, marker in owned.items():
+        for pid in listener_pids(port):
+            cmd = process_command(pid)
+            if marker and marker in cmd:
+                print(f"Killing orphaned process {pid} on port {port}: {cmd[:160]}")
+                for sig in ("-TERM", "-KILL"):
+                    subprocess.run(["kill", sig, str(pid)], stderr=subprocess.DEVNULL)
+                    end = time.time() + 10
+                    while time.time() < end and pid in listener_pids(port):
+                        time.sleep(0.5)
+                    if pid not in listener_pids(port):
+                        break
+            else:
+                print(f"Warning: port {port} is held by a process that is not ours (pid {pid}): {cmd[:160]}")
 
 
 def wait_for_http(url, label, timeout=180):
@@ -166,8 +237,7 @@ def wait_for_http(url, label, timeout=180):
     raise SystemExit(f"Timed out waiting for {label} at {url}: {last_error}")
 
 
-def caddy_block(url, dev=False):
-    p = ports()
+def caddy_block(url, p, dev=False):
     u = parsed_url(url)
     host = u.netloc
     scheme = u.scheme
@@ -202,12 +272,12 @@ def caddy_block(url, dev=False):
 """
 
 
-def update_caddy(url, dev=False):
+def update_caddy(url, p, dev=False):
     if dev:
         # Dev mode is local-only. Exposing the Vite 4 dev server publicly would
         # also expose its known file-read bugs, so Caddy is left untouched.
         return
-    block = caddy_block(url, dev)
+    block = caddy_block(url, p, dev)
     old = CADDYFILE.read_text() if CADDYFILE.exists() else ""
     pat = re.compile(rf"# BEGIN {APP} self-host managed block.*?# END {APP} self-host managed block\n?", re.S)
     new = pat.sub("", old).rstrip() + "\n\n" + block
@@ -230,8 +300,14 @@ def build(dev=False):
 
 
 def stop(_args=None):
+    p = read_ports()
     for name in SESSIONS.values():
         tmux_kill(name)
+    release_ports({
+        p["lobby"]: f"--server.port={p['lobby']}",
+        p["game"]: f"--server.port={p['game']}",
+        p["dev"]: f"--port {p['dev']}",
+    })
     print("Stopped Splendor self-host tmux sessions.")
 
 
@@ -241,7 +317,7 @@ def start(args, dev=False):
     p = ports()
     DATA.mkdir(exist_ok=True)
     (DATA / "saves").mkdir(exist_ok=True)
-    update_caddy(args.url, dev=dev)
+    update_caddy(args.url, p, dev=dev)
     lsjar = ROOT / "setup" / "LobbyService" / "target" / "ls.jar"
     gsjar = ROOT / "server" / "target" / "splendorGame.jar"
     missing = [str(x) for x in [lsjar, gsjar] if not x.exists()]
@@ -292,12 +368,14 @@ def dev_start(args):
 
 
 def status(args):
-    p = ports()
+    # Read-only: never probes for new ports or rewrites ports.json.
+    p = read_ports()
     print(f"Configured URL: {args.url}")
     print("Ports: " + json.dumps(p, sort_keys=True))
     for key, session in SESSIONS.items():
-        alive = subprocess.run(["tmux", "has-session", "-t", session], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-        print(f"{key}: {'running' if alive else 'stopped'} ({session})")
+        alive = tmux_alive(session)
+        listening = port_busy(p[key])
+        print(f"{key}: {'running' if alive else 'stopped'} ({session}), port {p[key]} {'listening' if listening else 'not listening'}")
 
 
 def main():
