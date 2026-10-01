@@ -221,8 +221,8 @@ def build(dev=False):
     run(["pnpm", "dedupe"], cwd=client, env=env_with_proxy())
     if not dev:
         run(["pnpm", "build"], cwd=client, env=env_with_proxy())
-    run(["mvn", "-DskipTests", "package"], cwd=ROOT / "server", env=env_with_proxy())
-    run(["mvn", "-Psqlite", "-DskipTests", "package"], cwd=ROOT / "setup" / "LobbyService", env=env_with_proxy())
+    run(["mvn", "-DskipTests", "-Dmaven.javadoc.skip=true", "-Dpmd.skip=true", "package"], cwd=ROOT / "server", env=env_with_proxy())
+    run(["mvn", "-Psqlite", "-DskipTests", "-Dmaven.javadoc.skip=true", "-Dpmd.skip=true", "package"], cwd=ROOT / "setup" / "LobbyService", env=env_with_proxy())
 
 
 def stop(_args=None):
