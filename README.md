@@ -4,7 +4,7 @@ An online multiplayer web-based implementation of the strategy game Splendor, ad
 ## Features
  * Splendor with Orient Expansion
  * Splendor with Orient Expansion + Trading Routes
- * Splendor with Orient Expansion + Cities
+ * Splendor with Orient Expansion + Cities (the official rule without nobles, or a variant with nobles)
  * Custom Noble and Custom City
  * Online multiplayer experience
  * Game spectator feature
@@ -16,39 +16,84 @@ The board supports desktop, tablet, and portrait-phone layouts. On mobile the bo
 
 ## Getting Started
 
-For self-hosting without Docker, see [docs/self-hosting.md](docs/self-hosting.md).
+Everything runs without Docker through `./self_host.py`, which builds the
+Lobby Service, the game server and the client, and runs each in a tmux
+session. See [docs/self-hosting.md](docs/self-hosting.md) for every command,
+the data layout and the logs, and [docs/security.md](docs/security.md) for
+the token model and known gaps.
 
-See [here](setup/readme.md) if you wish to develop the frontend/backend.
+You need Java 17 or newer, Maven, Node, pnpm, tmux, Caddy and lsof. Use pnpm
+(never npm) for the client.
+
+### Local development
+
+```bash
+./self_host.py dev-start
+```
+
+This builds the jars and starts the Lobby Service, the game server and the
+Astro dev server with hot reload, then prints a local URL
+(`http://127.0.0.1:<port>`). The dev server proxies `/ls` and `/gs` itself, so
+it works on macOS and Linux without Caddy.
+
+### Tests and visual checks
+
+End-to-end tests, screenshots and other checks against the real stack use an
+isolated instance, never the production deployment:
+
+```bash
+./self_host.py instance-start e2e      # prints JSON with baseUrl, lsUrl, gsUrl
+./self_host.py instance-stop e2e
+```
+
+Each instance has its own database, ports, private Caddy and logs under
+`.self-host/instances/NAME`, and several can run at once.
+
+`setup/readme.md` is the original course setup guide (Docker, MySQL) and does
+not describe this workflow.
 
 ## Setup
 
 ### Self-hosting
 
-Use the non-Docker self-hosting helper:
+On the server, the first time:
 
 ```bash
 ./self_host.py setup
 ```
 
-The default URL is `https://splendor.pinky.lilf.ir`; pass `--url` to use another absolute HTTP or HTTPS URL. See [docs/self-hosting.md](docs/self-hosting.md) for details.
+To deploy new commits later:
+
+```bash
+git pull && ./self_host.py redeploy
+```
+
+`redeploy` builds first and stops the running site only once the build has
+succeeded. It refuses while games are in progress (they live in memory and
+would be lost) unless you pass `--force`, and it rolls back to the previous
+build if the new one does not start.
+
+The default URL is `https://splendor.pinky.lilf.ir`; pass `--url` to use
+another absolute HTTP or HTTPS URL. See
+[docs/self-hosting.md](docs/self-hosting.md) for details.
 
 ## Gameplay
 
 ![splendor](https://user-images.githubusercontent.com/17598972/229967618-cb24d268-fe54-40e8-bd1d-9526f44069ca.gif)
 
-Upon startup, you will be greeted by the Splendor title page. Simply click to log in.
+Upon startup, you will be greeted by the Splendor title page. Click to continue, then choose a display name.
 
-You may now log in to one of the preconfigured Lobby Service accounts made by an administrative user.
+There are no passwords. Your browser keeps a random token that identifies you, so come back in the same browser to stay the same player. To play as yourself on another device or tab, use a migrate link (see below).
 
 This will now take you to the lobby screen. You can either start up a brand new game or load a previously saved game. All previously saved games can be loaded by any player and only require the same number of players to launch. The upper righthand corner features the settings and logout buttons.
 
-All players have access to the settings page and will be able to change their colors and passwords here.
+All players have access to the settings page, where they can change their colour or delete their account.
 
-Admin accounts will also notice an admin zone button in the upper lefthand corner. The admin zone allows admin accounts to add, delete, or modify user accounts and force unregister game services.
+Self-hosting creates no admin account. The admin zone (adding, deleting or modifying user accounts, force-unregistering game services) only appears for an account whose role was set to admin by hand in the Lobby Service database.
 
-Hovering over the "Create Session" button allows you to choose the game version to play. You will see the newly created game appear once you click on one of the three versions.
+The "Create Session" button lets you choose the game version to play. You will see the newly created game appear once you click on one of the three versions.
 
-The game requires at least two players. Players can click on “Join” to join a game. Notice that only the creator has the permission to delete an unlaunched game.
+A game takes two to four players. Players can click on “Join” to join a game. Notice that only the creator has the permission to delete an unlaunched game.
 
 The creator can launch the game once enough players have gathered.
 
