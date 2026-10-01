@@ -1,4 +1,4 @@
-import { SETTINGS } from "./settings.js";
+import { SETTINGS, createLongPoll, fetchWithTimeout } from "./settings.js";
 import { startTurn, verifyNoModals, performFollowUpAction, showNextModal } from "./modals/modals.js";
 import { animateMoveToken } from "./animation/tokens";
 import { moveCardFromDeck, moveCard, moveCardReserved } from "./animation/cards";
@@ -7,23 +7,40 @@ import { runDelayed } from "./animation/utils";
 import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
 
-import { hashText } from "./local-md5.js";
+import { md5Hex } from "./local-md5.js";
 import {
     playerAlias, isObserver, renderPlayerBadges, renderModerationActions
 } from "./moderation-ui.js";
 
 let currentLobbySession = null;
-let currentLobbySessionHash = "";
 
+const getSessionId = () => (new URL(document.location)).searchParams.get("sessionId");
+
+/**
+ * Whether a parsed reply looks like a Lobby Service session (and not, say, a
+ * game state that a test mock served for the same URL pattern).
+ */
+const isLobbySession = (data) => !!data && typeof data === "object"
+    && typeof data.creator === "string" && Array.isArray(data.players) && !!data.gameParameters;
+
+/**
+ * One-shot fetch of the lobby session (aliases, observers, moderators).
+ * Never throws; keeps the previous value on any failure.
+ *
+ * @returns {Promise<{session: object|null, hash: string|null}>}
+ */
 const fetchLobbySession = async (sessionId) => {
-    if(!sessionId) return currentLobbySession;
+    if(!sessionId) return { session: currentLobbySession, hash: null };
     try {
-        const resp = await fetch(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}`);
-        if(!resp.ok || resp.status === 204) return currentLobbySession;
-        return await resp.json();
+        const resp = await fetchWithTimeout(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}`, {}, 10000);
+        if(!resp.ok || resp.status === 204) return { session: currentLobbySession, hash: null };
+        const text = await resp.text();
+        const data = JSON.parse(text);
+        if(!isLobbySession(data)) return { session: currentLobbySession, hash: null };
+        return { session: data, hash: md5Hex(text) };
     } catch(err) {
         console.log("Could not fetch lobby session metadata: " + err);
-        return currentLobbySession;
+        return { session: currentLobbySession, hash: null };
     }
 };
 
@@ -53,9 +70,8 @@ const refreshGameModerationChrome = (state = currentState) => {
 };
 
 const refreshLobbySessionAndChrome = async () => {
-    const sessionId = (new URL(document.location)).searchParams.get("sessionId");
-    currentLobbySession = await fetchLobbySession(sessionId);
-    currentLobbySessionHash = JSON.stringify(currentLobbySession || {});
+    const { session } = await fetchLobbySession(getSessionId());
+    currentLobbySession = session;
     refreshGameModerationChrome();
 };
 
@@ -358,72 +374,28 @@ const updateNoblesBoard = async (cards) => {
     });
 };
 
-let gameStateHash = "-";
-let lastState = null;
+// last state that rendered successfully, and the state being (or last) rendered
+let renderedState = null;
 let currentState = null;
-
-const attempUpdate = () => {
-    let nextCallTime = 1;
-    updateGameboard().catch((err) => {
-        if(!err.toString().includes("Failed to fetch" )) {
-            console.log("[AS] Error during check (retry 30s): " + err);
-        }
-        showError(err.toString());
-        nextCallTime = 30000;
-    }).finally(() => {
-        setTimeout(attempUpdate, nextCallTime);
-    });
-};
+// hash of the state already written to the history panel
+let historyHash = null;
 
 // array for other updates that can be done (extensions)
 const furtherUpdates = [];
 
-const updateGameboard = async () => {
-    await SETTINGS.verifyCredentials();
-
-    const windowParams = (new URL(document.location)).searchParams;
-    const sessionId = windowParams.get("sessionId");
-    const nextLobbySession = await fetchLobbySession(sessionId);
-    const nextLobbySessionHash = JSON.stringify(nextLobbySession || {});
-    const lobbySessionChanged = nextLobbySessionHash !== currentLobbySessionHash;
-    currentLobbySession = nextLobbySession;
-    currentLobbySessionHash = nextLobbySessionHash;
-    const params = {
-        "hash": gameStateHash
-    };
-
-    const url = new URL(`${SETTINGS.getGS_API()}/api/sessions/${sessionId}`);
-    url.search = new URLSearchParams(params).toString();
-
-    const resp = await fetch(url);
-
-    const dataText = await resp.text();
-
-    if(resp.status == 204) {
-        // no game-state update; still refresh badges/actions if lobby moderation state changed.
-        if(lobbySessionChanged) refreshGameModerationChrome();
-        return;
-    }
-
-    if(!resp.ok) {
-        throw new Error(dataText);
-    }
-
-    // update hash
-    // console.log("Update: " + t);
-    const newHash = await hashText(dataText);
-
-    // update only if needed
-    if(newHash === gameStateHash) {
-        return;
-    }
-
-    gameStateHash = newHash;
-    console.log("[AS] Update available!");
-    const data = JSON.parse(dataText);
-    lastState = currentState;
+/**
+ * Render a game state from the Game Service. Throwing leaves the poll's
+ * stored hash unchanged, so the same state is fetched and rendered again.
+ *
+ * @param {object} data parsed game state
+ * @param {string} hash MD5 of the exact response body
+ */
+const renderGameState = (data, hash) => {
     currentState = data;
-    writeUpdate(lastState, currentState);
+    if(historyHash !== hash) {
+        writeUpdate(renderedState, data);
+        historyHash = hash;
+    }
 
     // tokens update
     const tokenMap = data.tokens;
@@ -449,28 +421,97 @@ const updateGameboard = async () => {
         playerInv.classList.remove("hide");
     }
 
-    updateNoblesBoard(data.nobleDeck.visibleCards);
+    updateNoblesBoard((data.nobleDeck && data.nobleDeck.visibleCards) || []);
     updateTierRow(".board-cards-row.board-cards-level1", data.tier1Deck, data.tier1OrientDeck);
     updateTierRow(".board-cards-row.board-cards-level2", data.tier2Deck, data.tier2OrientDeck);
     updateTierRow(".board-cards-row.board-cards-level3", data.tier3Deck, data.tier3OrientDeck);
 
     furtherUpdates.forEach((func) => func(data));
 
+    const currentPlayer = data.players[data.turnCounter];
     if(data.gameOver) {
         verifyNoModals();
         initGameOver(data);
         showNextModal("#gameover-modal");
-    } else {
-        // check if it's your turn
-        if(data.players[data.turnCounter].name === curUsername) {
-            if(!performFollowUpAction(data)) {
-                startTurn();
-            }
-        } else {
-            verifyNoModals();
+    } else if(currentPlayer && currentPlayer.name === curUsername) {
+        // it's your turn
+        if(!performFollowUpAction(data)) {
+            startTurn();
         }
+    } else {
+        verifyNoModals();
     }
+
+    renderedState = data;
 };
+
+// Errors worth a toast (not connection blips, which show the indicator).
+let lastShownPollError = null;
+const showPollErrorOnce = (message) => {
+    if(message === lastShownPollError) return;
+    lastShownPollError = message;
+    showError(message);
+};
+
+/**
+ * Lobby Service long-poll on this session, for aliases, observers and
+ * moderators. The LS deletes the session when the game ends; then it stops.
+ */
+const lobbySessionPoll = createLongPoll({
+    name: "board-lobby-session",
+    indicator: false,
+    url: (hash) => {
+        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${getSessionId()}`);
+        url.search = new URLSearchParams({ hash }).toString();
+        return url;
+    },
+    onUpdate: (data) => {
+        if(!isLobbySession(data)) throw new Error("Lobby session reply has an unexpected shape.");
+        currentLobbySession = data;
+        refreshGameModerationChrome();
+    },
+    onGone: () => true,
+});
+
+let boardBooted = false;
+/**
+ * Runs before every game-state request. The identity check is cached by
+ * SETTINGS, so after the first success this costs nothing. The first lobby
+ * session fetch happens once, before the first render, so that player
+ * aliases are known when the board first draws.
+ */
+const beforeGameStateRequest = async () => {
+    await SETTINGS.verifyCredentials();
+    if(boardBooted) return;
+    boardBooted = true;
+    const { session, hash } = await fetchLobbySession(getSessionId());
+    currentLobbySession = session;
+    if(hash) lobbySessionPoll.setHash(hash);
+    lobbySessionPoll.start();
+};
+
+/**
+ * Game Service long-poll on the game state.
+ */
+const gameStatePoll = createLongPoll({
+    name: "board",
+    url: (hash) => {
+        const url = new URL(`${SETTINGS.getGS_API()}/api/sessions/${getSessionId()}`);
+        url.search = new URLSearchParams({ hash }).toString();
+        return url;
+    },
+    beforeRequest: beforeGameStateRequest,
+    onUpdate: (data, text, hash) => {
+        renderGameState(data, hash);
+        lastShownPollError = null;
+    },
+    onError: (err, info) => {
+        // A 400 means the GS does not know this session (for example after a
+        // GS restart). Tell the user once; keep retrying slowly in case it returns.
+        if(info.kind === "client") showPollErrorOnce(err.message || "This game could not be loaded.");
+        if(info.kind === "render") showPollErrorOnce("The board could not be updated: " + (err.message || err));
+    },
+});
 
 /**
  * Add an updater to the main update executor.
@@ -483,6 +524,5 @@ export const addUpdater = (func) => {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-
-    setTimeout(attempUpdate, 1);
+    gameStatePoll.start();
 });

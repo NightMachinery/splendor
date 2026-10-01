@@ -1,4 +1,4 @@
-import { SETTINGS, GAME_VERSION_TO_BOARD } from "./settings.js";
+import { SETTINGS, GAME_VERSION_TO_BOARD, createLongPoll } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
@@ -7,9 +7,6 @@ import {
     playerAlias, isObserver, isMod,
     renderPlayerBadges, renderModerationActions
 } from "./moderation-ui.js";
-
-// perhaps we need a better build system
-import { hashText } from "./local-md5.js";
 
 /**
  * Creates a new session with the specified game version and save id.
@@ -37,10 +34,44 @@ export const createNewSession = async (gameVersion, saveId="") => {
 
     const respText = await resp.text();
     if(!resp.ok) {
-        throw new Error(respText);
+        if(resp.status === 401) SETTINGS.invalidateCredentials();
+        throw new Error(respText || `Could not create the session (${resp.status}).`);
     }
 
     return respText;
+};
+
+/**
+ * User-facing text for a failed lobby action.
+ */
+const actionErrorText = (label, err) => {
+    if(err && err.transient) return `${label} failed: could not reach the server. Try again.`;
+    return `${label} failed: ${err && err.message ? err.message : err}`;
+};
+
+/**
+ * Run an authenticated Lobby Service request for a session button.
+ * A 401 drops the cached identity check so the next action re-verifies.
+ *
+ * @param {HTMLElement} elm button (disabled while the request runs)
+ * @param {string} method HTTP method
+ * @param {string} path path under the LS API, starting with /api/
+ * @param {string} label action name for error messages
+ */
+const runSessionRequest = (elm, method, path, label) => {
+    elm.disabled = true;
+    SETTINGS.verifyCredentials().then(async () => {
+        const url = new URL(`${SETTINGS.getLS_API()}${path}`);
+        url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
+        const resp = await fetch(url, { method });
+        if(!resp.ok) {
+            if(resp.status === 401) SETTINGS.invalidateCredentials();
+            const text = await resp.text().catch(() => "");
+            showError(text || `${label} failed (${resp.status}).`);
+        }
+    }).catch((err) => {
+        if(!(err && err.authRejected)) showError(actionErrorText(label, err));
+    }).finally(() => elm.disabled = false);
 };
 
 const changeTab = (selectedElm, otherElm) => {
@@ -106,8 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadgameTabBtn.onclick = () => showLoadGameTab();
 
     // PLAYER GREETING
-    document.getElementById("player-greeting").innerHTML = greetUser();
-    console.log(greetUser());
+    document.getElementById("player-greeting").textContent = greetUser();
 
     function greetUser() {
         var welcome = "Hello, " + SETTINGS.getUsername() +"!";
@@ -136,84 +166,26 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    const sessionIdOf = (elm) => elm.closest("tr[session-id]").getAttribute("session-id");
+
     const joinSession = (elm) => {
-        elm.disabled = true;
-        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
-
-        SETTINGS.verifyCredentials().then(() => {
-            const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${SETTINGS.getUsername()}`);
-            url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
-
-            fetch(url, {
-                method: "PUT"
-            }).then((resp) => {
-                if(!resp.ok) {
-                    resp.text().then((data) => showError(data));
-                }
-            }).catch((err) => {
-                showError(err.toString());
-            }).finally(() => elm.disabled = false);
-        }).catch((err) => console.log("Error while joining: " + err));
+        const sessionId = sessionIdOf(elm);
+        runSessionRequest(elm, "PUT", `/api/sessions/${sessionId}/players/${SETTINGS.getUsername()}`, "Joining");
     };
 
     const leaveSession = (elm) => {
-        elm.disabled = true;
-        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
-
-        SETTINGS.verifyCredentials().then(() => {
-            const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}/players/${SETTINGS.getUsername()}`);
-            url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
-    
-            fetch(url, {
-                method: "DELETE"
-            }).then((resp) => {
-                if(!resp.ok) {
-                    resp.text().then((data) => showError(data));
-                }
-            }).catch((err) => {
-                showError(err.toString());
-            }).finally(() => elm.disabled = false);
-        }).catch((err) => console.log("Error while leaving: " + err));
+        const sessionId = sessionIdOf(elm);
+        runSessionRequest(elm, "DELETE", `/api/sessions/${sessionId}/players/${SETTINGS.getUsername()}`, "Leaving");
     };
 
     const deleteSession = (elm) => {
-        elm.disabled = true;
-        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
-
-        SETTINGS.verifyCredentials().then(() => {
-            const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}`);
-            url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
-
-            fetch(url, {
-                method: "DELETE"
-            }).then((resp) => {
-                if(!resp.ok) {
-                    resp.text().then((data) => showError(data));
-                }
-            }).catch((err) => {
-                showError(err.toString());
-            }).finally(() => elm.disabled = false);
-        }).catch((err) => console.log("Error while deleting: " + err));
+        const sessionId = sessionIdOf(elm);
+        runSessionRequest(elm, "DELETE", `/api/sessions/${sessionId}`, "Deleting");
     };
 
     const launchSession = (elm) => {
-        elm.disabled = true;
-        const sessionId = elm.closest("tr[session-id]").getAttribute("session-id");
-
-        SETTINGS.verifyCredentials().then(() => {
-            const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${sessionId}`);
-            url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
-
-            fetch(url, {
-                method: "POST"
-            }).then((resp) => {
-                if(!resp.ok) {
-                    resp.text().then((data) => showError(data));
-                }
-            }).catch((err) => {
-                showError(err.toString());
-            }).finally(() => elm.disabled = false);
-        }).catch((err) => console.log("Error while launching: " + err));
+        const sessionId = sessionIdOf(elm);
+        runSessionRequest(elm, "POST", `/api/sessions/${sessionId}`, "Launching");
     };
 
 
@@ -224,9 +196,6 @@ document.addEventListener("DOMContentLoaded", () => {
             window.location.href = `/${GAME_VERSION_TO_BOARD[gameVer]}/?sessionId=${sesId}`
         }).finally(() => elm.disabled = false);
     };
-
-    // Related to checking sessions that user can join
-    var availableSessionHash = "-";
 
     const renderSessionPlayers = (row, ses) => {
         const cell = row.querySelector(".session-players-info");
@@ -432,53 +401,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     }
 
-    async function checkAvailableSesison() {
-        await SETTINGS.verifyCredentials();
-
-        console.log("[AS] Checking...");
-        var nextCallTime = 1;
-        const params = {
-            "hash": availableSessionHash
-        };
-        const url = new URL(`${SETTINGS.getLS_API()}/api/sessions`);
-        url.search = new URLSearchParams(params).toString();
-
-        fetch(url, {
-            method: "GET",
-        }).then((resp) => resp.text()).then(async (t) => {
-            // console.log("Received available sessions update");
-            var data = {};
-            try {
-                data = JSON.parse(t);
-            } catch (e) {
-                // not a valid json string
-                return;
+    // Long-poll the list of sessions (see createLongPoll in settings.js).
+    const sessionsPoll = createLongPoll({
+        name: "lobby",
+        url: (hash) => {
+            const url = new URL(`${SETTINGS.getLS_API()}/api/sessions`);
+            url.search = new URLSearchParams({ hash }).toString();
+            return url;
+        },
+        beforeRequest: () => SETTINGS.verifyCredentials(),
+        onUpdate: (data) => {
+            if(!data || typeof data.sessions !== "object" || data.sessions === null) {
+                throw new Error("Session list reply has an unexpected shape.");
             }
-
-            // update hash
-            // console.log("Update: " + t);
-            const newHash = await hashText(t);
-
-            // update only if needed
-            if(newHash !== availableSessionHash) {
-                console.log("[AS] Update available!");
-                availableSessionHash = newHash;
-                updateAvailableSessions(data);
-            }
-
-        }).catch((err) => {
-            if(!err.toString().includes("Failed to fetch" )) {
-                console.log("[AS] Error during check (retry 30s): " + err);
-                // showError(err.toString());
-            }
-            nextCallTime = 30000;
-        }).finally(() => {
-
-            // recall
-            setTimeout(checkAvailableSesison, nextCallTime);
-        });
-    }
-    // start the updates
-    setTimeout(checkAvailableSesison, 1);
+            updateAvailableSessions(data);
+        },
+    });
+    sessionsPoll.start();
 
 });
