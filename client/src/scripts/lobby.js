@@ -1,4 +1,4 @@
-import { SETTINGS, boardPathForVersion, createLongPoll } from "./settings.js";
+import { SETTINGS, boardPathForVersion, createLongPoll, backoffDelay } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
@@ -117,8 +117,19 @@ export const focusSession = (sesId) => {
 
 document.addEventListener("DOMContentLoaded", () => {
     // set user color
-    getUserDetail().then((data) => {
-        if(data) {
+    // Avatar and role. Retried with backoff, without toasts, while the
+    // Lobby Service is unreachable (e.g. during a redeploy).
+    let userDetailAttempts = 0;
+    const loadUserDetail = () => {
+        userDetailAttempts++;
+        const retry = () => {
+            if(userDetailAttempts < 12) setTimeout(loadUserDetail, backoffDelay(userDetailAttempts));
+        };
+        getUserDetail().then((data) => {
+            if(!data) {
+                retry();
+                return;
+            }
             renderProfileAvatar(document.querySelector(".profile-pic"), data);
 
             // show service / admin stuff
@@ -130,8 +141,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.querySelector("body").classList.remove("is-service");
                 document.querySelector("body").classList.remove("is-admin");
             }
-        }
-    }).catch((err) => showError(err.toString()));
+        }).catch((err) => {
+            if(err && err.authRejected) return; // the login page is being shown
+            if(err && (err.transient || err instanceof TypeError)) {
+                retry();
+                return;
+            }
+            showError(err.toString());
+        });
+    };
+    loadUserDetail();
 
     sessionTabBtn.onclick = () => showSessionTab();
     loadgameTabBtn.onclick = () => showLoadGameTab();
