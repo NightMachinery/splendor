@@ -10,6 +10,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -22,11 +23,38 @@ public class SessionManager {
     Map<String, GameSession> gameSessions;
 
     /**
+     * Optional shuffle seed for new games (property gs.shuffleSeed), or null for a random shuffle.
+     * Every new game gets the same deal while it is set. Meant for reproducible end-to-end tests,
+     * never for real games.
+     */
+    private Long shuffleSeed;
+
+    /**
      * Initialize the Session Manager.
      */
     @Autowired
     public SessionManager() {
         this.gameSessions = new ConcurrentHashMap<>();
+    }
+
+    /**
+     * Set the shuffle seed used for new games. A value that is not a whole number fails at startup
+     * instead of failing every game launch.
+     *
+     * @param shuffleSeed seed as a whole number, or null / blank for a random shuffle
+     * @throws IllegalArgumentException if the seed is not a whole number
+     */
+    @Value("${gs.shuffleSeed:}")
+    public void setShuffleSeed(String shuffleSeed) {
+        if (shuffleSeed == null || shuffleSeed.isBlank()) {
+            this.shuffleSeed = null;
+            return;
+        }
+        try {
+            this.shuffleSeed = Long.parseLong(shuffleSeed.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("gs.shuffleSeed must be a whole number, got '" + shuffleSeed + "'", e);
+        }
     }
 
     /**
@@ -153,6 +181,9 @@ public class SessionManager {
             case BASE_ORIENT_CITIES, BASE_ORIENT_CITIES_NOBLES -> new CitiesGame(version, 0);
             case BASE_ORIENT_TRADE_ROUTES -> new TradingPostsGame(15, 0);
         };
+        if (shuffleSeed != null) {
+            game.setShuffleRandom(new Random(shuffleSeed));
+        }
 
         List<Player> playerList = new ArrayList<>();
         for (PlayerInfo p : players) {
