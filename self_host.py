@@ -663,8 +663,16 @@ def ensure_node_modules():
 
 
 def build_client_staging():
-    """pnpm build into a staging directory; client/dist is not touched."""
-    staging = DATA / "build" / f"dist-staging-{os.getpid()}"
+    """pnpm build into a staging directory; client/dist is not touched.
+
+    The staging dir must sit inside client/. Astro 2.0.13 builds an outDir
+    outside its working directory in client/.astro first, then starts copying
+    that to outDir without awaiting the copy before deleting client/.astro,
+    so such a build fails at random with ENOENT once the site has enough
+    files. node_modules/.cache is ignored by git and is on the same file
+    system as client/dist, so the swap is still a rename.
+    """
+    staging = CLIENT / "node_modules" / ".cache" / f"splendor-dist-staging-{os.getpid()}"
     if staging.exists():
         shutil.rmtree(staging)
     staging.parent.mkdir(parents=True, exist_ok=True)

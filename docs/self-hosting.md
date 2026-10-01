@@ -198,10 +198,15 @@ instance keeps the same files in `.self-host/instances/NAME/`:
 - `jars/`: the copies of `ls.jar` and `splendorGame.jar` the JVMs run from.
 - named instances only: `Caddyfile`, `caddy/` (the private Caddy's state),
   `vite-cache/` (dev mode) and `instance.json` (while running).
-- `.self-host/build/` (shared): the staging area. Client builds of any
-  instance go there before they are swapped into `client/dist`. A redeploy
-  also keeps the next jars, the previous build and, after a rollback, the
-  failed build (`build/failed/`) there.
+- `.self-host/build/` (shared): the staging area for jars. A redeploy keeps
+  the next jars, the previous build and, after a rollback, the failed build
+  (`build/failed/`) there.
+- `client/node_modules/.cache/splendor-dist-staging-PID/`: where client
+  builds of any instance go before they are swapped into `client/dist`. It
+  has to be inside `client/`: Astro 2.0.13 builds an `outDir` outside its
+  working directory in `client/.astro` first and deletes that folder before
+  its copy to `outDir` has finished, so such a build fails at random with
+  ENOENT once the site has enough files.
 
 These are inside the repository directory, so `git clean -fdx` deletes them,
 including every user account. Back up `lobby.sqlite` and `saves/` before
@@ -294,7 +299,8 @@ and record them in their own `ports.json`.
 - `SPLENDOR_LS_URL`, `SPLENDOR_GS_URL`: backend targets of the Astro dev
   proxy.
 - `SPLENDOR_DIST_DIR`: output directory of `pnpm build` (Astro's `outDir`);
-  the script uses it to build into staging.
+  the script uses it to build into staging. Keep it inside `client/` (see
+  the staging note under "Data layout"); an absolute path there is fine.
 - `SPLENDOR_VITE_CACHE_DIR`: Vite cache directory, so several dev servers can
   run from one checkout.
 - `SPLENDOR_SERVICE_TOKEN` (LS) and `LS_SERVER_PASSWORD` (GS): set by the
