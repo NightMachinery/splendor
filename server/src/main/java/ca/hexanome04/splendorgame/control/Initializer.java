@@ -33,10 +33,15 @@ public class Initializer {
     final Logger logger = LoggerFactory.getLogger(Initializer.class);
 
     // we exclude some code that runs automatically when Spring Boot starts, but we do test the methods individually
-    @Value("${test:false}")
+    @Value("${gs.testMode:false}")
     private boolean isTestMode;
     @Value("${LS.location}")
     private String lsLocation;
+    // how often (and how far apart) registration with the LS is retried before the server gives up
+    @Value("${ls.register.maxRetries:60}")
+    private int registerMaxRetries = 60;
+    @Value("${ls.register.retryDelayMs:2000}")
+    private long registerRetryDelayMs = 2000;
     GameServiceInfo[] gameServices;
     Authentication auth;
     GameSaveInitializer gameSaveInitializer;
@@ -94,7 +99,7 @@ public class Initializer {
      */
     public void registerWithLobbyService() {
         boolean registered = false;
-        int maxRetries = 60;
+        int maxRetries = this.registerMaxRetries;
         int retries = 0;
         while (retries < maxRetries && !registered) {
             try {
@@ -123,7 +128,7 @@ public class Initializer {
                 logger.warn("Game service registration attempt {}/{} failed: {}", retries + 1, maxRetries, e.toString());
                 retries++;
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(this.registerRetryDelayMs);
                 } catch (InterruptedException interruptedException) {
                     Thread.currentThread().interrupt();
                     break;
