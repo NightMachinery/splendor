@@ -8,8 +8,12 @@
         "build": "astro build",
         "preview": "astro preview",
         "astro": "astro",
-        "test": "playwright test",
-        "test:e2e": "playwright test tests/e2e --project=full-stack-chromium"
+        "test": "playwright test --project='mocked-*'",
+        "test:unit": "node --test 'tests/unit/**/*.test.mjs'",
+        "test:e2e": "playwright test --project='e2e-*'",
+        "test:e2e:api": "playwright test --project=e2e-api",
+        "test:e2e:ui": "playwright test --project='e2e-*-*'",
+        "test:all": "pnpm run test:unit && pnpm run test"
     },
     "dependencies": {
         "@astrojs/react": "^2.1.0",
@@ -25,9 +29,12 @@
         "tailwindcss": "^3.2.7"
     },
     "devDependencies": {
-        "@playwright/test": "^1.31.2",
+        "@playwright/test": "^1.63.0",
         "eslint": "^8.34.0",
         "eslint-plugin-astro": "^0.23.0"
     },
-    "packageManager": "pnpm@8.15.9"
+    "packageManager": "pnpm@8.15.9",
+    "engines": {
+        "node": ">=20"
+    }
 }
