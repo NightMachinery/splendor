@@ -12,7 +12,7 @@ test.describe.parallel("Test trading posts modals", () => {
 
         await mockGetUsername(page, MAIN_USER);
         const game = createBasicGame();
-        mockGameState(page, game);
+        await mockGameState(page, game);
         await page.goto("/gameboard-tradingposts/?sessionId=123");
     });
 
@@ -21,13 +21,13 @@ test.describe.parallel("Test trading posts modals", () => {
         game
             .resetValidActions()
             .curValidActions.push(Actions.TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER);
-        mockGameState(page, game);
+        await mockGameState(page, game);
 
         // verify that the modal appears properly
         const takeModal = page.locator("#take-extra-token-modal");
         const takeGreenToken = takeModal.locator(".green-token");
         await expect(takeModal).toBeVisible();
-        takeGreenToken.click(); // select token to take
+        await takeGreenToken.click(); // select token to take
         await expect(takeGreenToken).toHaveClass(/selected/);
 
         // verify that next modal appears properly
@@ -37,7 +37,7 @@ test.describe.parallel("Test trading posts modals", () => {
         const putModal = page.locator("#putback-extra-token-modal");
         const putBrownToken = putModal.locator(".brown-token");
         await expect(putModal).toBeVisible();
-        putBrownToken.click(); // select token to put back
+        await putBrownToken.click(); // select token to put back
         await expect(putBrownToken).toHaveClass(/selected/);
 
         // verify that action request is sent

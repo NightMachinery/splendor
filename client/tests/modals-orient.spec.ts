@@ -12,7 +12,7 @@ test.describe.parallel("Test orient modals", () => {
 
         await mockGetUsername(page, MAIN_USER);
         const game = createBasicGame();
-        mockGameState(page, game);
+        await mockGameState(page, game);
         await page.goto("/gameboard/?sessionId=123");
     });
 
@@ -27,7 +27,7 @@ test.describe.parallel("Test orient modals", () => {
             .resetValidActions()
             .curValidActions.push(Actions.CHOOSE_SATCHEL_TOKEN);
 
-        mockGameState(page, game);
+        await mockGameState(page, game);
 
         // verify that the modal appears properly
         const satchelModal = page.locator("#choose-satchel-modal");
@@ -55,7 +55,7 @@ test.describe.parallel("Test orient modals", () => {
         const game = createBasicGame();
         game.resetValidActions()
             .curValidActions.push(Actions.CASCADE_1);
-        mockGameState(page, game);
+        await mockGameState(page, game);
 
         // verify that the modal appears properly
         const cascadeModal = page.locator("#cascade-modal");
@@ -84,7 +84,7 @@ test.describe.parallel("Test orient modals", () => {
         const game = createBasicGame();
         game.resetValidActions()
             .curValidActions.push(Actions.RESERVE_NOBLE);
-        mockGameState(page, game);
+        await mockGameState(page, game);
 
         // verify that the modal appears properly
         const modal = page.locator("#reserve-noble-modal");
