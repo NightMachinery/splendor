@@ -27,11 +27,17 @@ const getGameSaveDetails = async () => {
     const url = new URL(`${SETTINGS.getGS_API()}/api/saves`);
     url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
 
-    const resp = await fetch(url);
-    if(!resp.ok) { // ignore errors
+    try {
+        const resp = await fetch(url);
+        if(!resp.ok) { // ignore errors
+            return [];
+        }
+        const saves = await resp.json();
+        return Array.isArray(saves) ? saves.filter(s => s && s.gameSaveData) : [];
+    } catch(err) {
+        console.warn(`Could not load saved-game details from the game service: ${err}`);
         return [];
     }
-    return await resp.json();
 };
 
 /**
@@ -131,7 +137,7 @@ const updateGameSaveInfo = async () => {
 
     // one request per known version, in parallel
     const perVersion = await Promise.all(Object.keys(GAME_VERSION_TO_BOARD).map(getGameSaveForVersion));
-    const gameSavesLS = perVersion.flat();
+    const listedLS = perVersion.flat().filter(s => s && typeof s.savegameid === "string");
 
     const gameSavesInfo = {};
     // go through each item in list and make entry with save id as key
@@ -140,9 +146,12 @@ const updateGameSaveInfo = async () => {
         gameSavesInfo[s.gameSaveData.savegameid] = s;
     }
 
-    if(gameSavesLS.length !== savesGS.length) {
-        console.log(`Backend has ${savesGS.length} game saves, but LS has ${gameSavesLS.length}.`);
+    if(listedLS.length !== savesGS.length) {
+        console.log(`Backend has ${savesGS.length} game saves, but LS has ${listedLS.length}.`);
     }
+    // Only saves both services know can be shown (and sorted by the GS
+    // timestamp); one the GS lacks used to crash the sort below.
+    const gameSavesLS = listedLS.filter(s => Object.prototype.hasOwnProperty.call(gameSavesInfo, s.savegameid));
 
 
     // now update the html
