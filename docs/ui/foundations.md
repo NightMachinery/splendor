@@ -88,6 +88,8 @@ File: `client/src/styles/sp/primitives.css`. It needs `tokens.css` and is class-
 - **Focus ring.** `:focus-visible` gets a 2px `--sp-focus` outline with a 2px offset, so it shows for keyboard users only.
 - **Hover and press.** A slight brightening on hover, inside the hover media query only, and a slight darkening while pressed, which also works on touch.
 
+- **Board backdrop.** `.sp-board-backdrop` on `body` (or a page wrapper) draws the textured blue table as a fixed `::before` layer at `--z-backdrop`, the replacement for `background-attachment: fixed`. It declares a plain `url()` JPEG first and an `image-set()` with `type()` second, so browsers that cannot parse the second keep the first. Chromium picks `board-1280.avif` at 1x, `board-1920.avif` at 2x and up, and `board-1920.avif` on W. Set the page colour on `html` or on `body`, never on both: a `body` background that does not propagate to the canvas paints over negative z-index layers and hides the backdrop.
+
 The primitives deliberately do not style `body` (background, font, numerals). Board pages get that from WP-SHELL's `board-base.css` and the entry pages from WP-LOBBY.
 
 ## The sprite
@@ -177,3 +179,22 @@ When the lint was added, 24 legacy files broke 117 rule instances between them, 
 Three advisory pairs fall short with the spec's palette: white numerals on Green are 3.41:1 (dark ink would give about 5.3:1), and Brown is 2.39:1 on `--sp-bg` and 2.10:1 on `--sp-surface-1`, so a brown gem outline is faint on the dark surfaces. The gem's own shape still identifies it, and its pile or pip carries the colour; the values follow the spec until its owner decides otherwise.
 
 The probe's numbers were cross-checked in headless Chromium: all 18 required text pairs, resolved there through `getComputedStyle`, match the lint within 0.01.
+
+## Assets
+
+`client/art/build-assets.py` derives every served raster from its source; `client/art/README.md` lists the outputs and their provenance. It takes the targets `icons`, `turn-icons`, `title` and `boards` (all four by default) and `--check`, which exits 1 when an output is out of date. It is idempotent: each output is encoded in memory and written only when its bytes change, so a second run reports every file as unchanged and leaves git clean. The existing icons and title art came out byte-identical, so adding the new targets regenerated nothing that was already committed.
+
+WP-FOUND added two targets:
+
+- **Turn favicons**, `public/images/icons/icon-turn-32.png` and `icon-turn-48.png`: the normal 32px and 48px icons with a gold `--sp-gold` dot in a navy `--sp-bg` ring, flush with the top-right corner. The dot is 12px across with a 2px ring at 32px, and 18px with a 3px ring at 48px, drawn at 8x and box-downsampled so the edges are anti-aliased. Outside that corner the pixels are identical to the normal icon.
+- **Board backgrounds**, `public/images/bg/`, from `public/images/bluebackground.jpg` (2500x1668, the original, kept as it is): `board-1280.avif` (1280x854, about 26KB), `board-1920.avif` (1920x1281, about 94KB) and the fallback `board-1280.jpg` (quality 78, about 95KB). AVIF replaces the WebP of the original plan because it is far smaller here; the JPEG is for browsers without AVIF or `image-set()` `type()`. `.sp-board-backdrop` serves them.
+
+The existing assets were checked and left alone: every icon is the exact pixel size its name says, the apple-touch icon is opaque with the `#0b2a45` navy in its corners, and the maskable icons keep all artwork within the central 80% circle (the furthest artwork pixel is 76.4px from the centre of the 192px icon, against a 76.8px safe radius, and 202.8px against 204.8px at 512px).
+
+## Verification
+
+How each part was checked, so a later change can repeat it:
+
+- The lint: `node tools/lint-css.mjs` passes over the whole tree, `--self-test` passes all fixtures (each forbidden pattern from the spec is flagged with exactly the expected rule, a clean fixture with every allowed form is not, and the exemptions for `tokens.css` hold), and disabling a rule in a copy of the script makes its fixtures fail.
+- Tokens, primitives, sprite and head: a scratch Astro page rendering `<BaseHead />`, `<SpSprite />` and every primitive was built and measured in headless Chromium at all target viewports. The card widths, HUD and dock heights, gutter, noble size, pip size, `--sp-vh` and the test insets came out as listed above; the 3-4 player HUD heights switch; both reduced-motion signals zero `--sp-motion` and cap durations at 120ms; both Judson weights load from `/fonts/judson/` with no external request; all 19 symbols exist with 24x24 viewBoxes and render; the focus ring is 2px `--sp-focus` with a 2px offset.
+- Manifest: it parses as JSON, has every field from the spec, and each icon it names exists at the declared size.

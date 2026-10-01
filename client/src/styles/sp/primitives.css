@@ -193,6 +193,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Board backdrop: the textured blue table behind a page. Put the class
+   on body (or a page wrapper). It is a fixed ::before layer at
+   --z-backdrop, the replacement for background-attachment: fixed, which iOS
+   ignores. The layer shows only if the page colour is set on html or on
+   body, not on both: a body background that does not propagate to the
+   canvas paints over negative z-index layers. The plain JPEG declaration
+   comes first, as the fallback for browsers without image-set() type(). ---- */
+.sp-board-backdrop::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-backdrop);
+  pointer-events: none;
+  background-color: var(--sp-bg);
+  background-image: url("/images/bg/board-1280.jpg");
+  background-image: image-set(
+    url("/images/bg/board-1280.avif") type("image/avif") 1x,
+    url("/images/bg/board-1920.avif") type("image/avif") 2x,
+    url("/images/bg/board-1280.jpg") type("image/jpeg") 1x
+  );
+  background-position: center;
+  background-size: cover;
+}
+@media (min-width: 1600px) and (min-height: 800px) {
+  .sp-board-backdrop::before {
+    background-image: image-set(
+      url("/images/bg/board-1920.avif") type("image/avif"),
+      url("/images/bg/board-1280.jpg") type("image/jpeg")
+    );
+  }
+}
+
 /* ---- Focus ring: 2px --sp-focus with a 2px offset, keyboard only. ---- */
 :focus-visible {
   outline: 2px solid var(--sp-focus);
