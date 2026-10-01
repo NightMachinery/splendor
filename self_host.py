@@ -60,8 +60,27 @@ def parsed_url(url):
     return u
 
 
+def maven_proxy_opts():
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    if not proxy:
+        return ""
+    u = urlparse(proxy)
+    if u.scheme not in ("http", "https") or not u.hostname or not u.port:
+        return ""
+    non_proxy = (os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "127.0.0.1,localhost,::1")
+    non_proxy_hosts = "|".join(x.strip() for x in non_proxy.split(",") if x.strip())
+    return " ".join([
+        f"-Dhttp.proxyHost={u.hostname}", f"-Dhttp.proxyPort={u.port}",
+        f"-Dhttps.proxyHost={u.hostname}", f"-Dhttps.proxyPort={u.port}",
+        f"-Dhttp.nonProxyHosts={non_proxy_hosts}",
+    ])
+
+
 def env_with_proxy():
     env = os.environ.copy()
+    opts = maven_proxy_opts()
+    if opts:
+        env["MAVEN_OPTS"] = (env.get("MAVEN_OPTS", "") + " " + opts).strip()
     return env
 
 
