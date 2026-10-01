@@ -525,7 +525,9 @@ const renderConnectionIndicator = () => {
 
 const setReconnecting = (name, on) => {
     const had = reconnectingPolls.has(name);
-    if(on === had) return;
+    // render at least once, so data-splendor-connection is set after the first outcome
+    const rendered = typeof document !== "undefined" && document.body && document.body.dataset.splendorConnection;
+    if(on === had && rendered) return;
     if(on) reconnectingPolls.add(name); else reconnectingPolls.delete(name);
     renderConnectionIndicator();
 };
