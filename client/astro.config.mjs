@@ -34,12 +34,59 @@ const stripPrefixProxy = (target, prefix) => ({
     rewrite: (path) => path.replace(prefix, "") || "/",
 });
 
+// The same service-only rules as the Caddy front (site_routes in
+// ../self_host.py), so a dev server is no more open than production:
+// - /ls: anything but GET on a path containing /gameservices (game service
+//   registration and savegame writes; the GS calls the LS directly);
+// - /gs: every PUT except a player action, which blocks the unauthenticated
+//   LS->GS launch call PUT /api/sessions/{id} (the LS calls the GS directly).
+// A segment may not start with a dot, so ".." can never pass as an id.
+const SEGMENT = "[A-Za-z0-9_~-][A-Za-z0-9_.~-]*";
+const GS_PLAYER_ACTION_RE = new RegExp(`^/api/sessions/${SEGMENT}/players/${SEGMENT}/actions/${SEGMENT}$`);
+
+const decodedPath = (url) => {
+    const raw = (url || "/").split("?")[0];
+    try {
+        return decodeURIComponent(raw);
+    } catch {
+        return raw;
+    }
+};
+
+const isServiceOnlyRoute = (method, url) => {
+    const path = decodedPath(url);
+    if (/^\/ls(\/|$)/.test(path)) {
+        return method !== "GET" && /\/gameservices/i.test(path.slice(3));
+    }
+    if (/^\/gs(\/|$)/.test(path)) {
+        return method === "PUT" && !GS_PLAYER_ACTION_RE.test(path.slice(3));
+    }
+    return false;
+};
+
+// configureServer middlewares run before Vite's own, including the proxy.
+const blockServiceOnlyRoutes = () => ({
+    name: "splendor-block-service-only-routes",
+    configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+            if (isServiceOnlyRoute(req.method, req.url)) {
+                res.statusCode = 403;
+                res.setHeader("content-type", "text/plain; charset=utf-8");
+                res.end("Forbidden: service-only route");
+                return;
+            }
+            next();
+        });
+    },
+});
+
 // https://astro.build/config
 export default defineConfig({
     // self_host.py builds release copies into a staging directory first.
     outDir: process.env.SPLENDOR_DIST_DIR || "./dist",
     integrations: [tailwind(), react()],
     vite: {
+        plugins: [blockServiceOnlyRoutes()],
         // Lets several isolated dev servers run from this checkout at once.
         ...(process.env.SPLENDOR_VITE_CACHE_DIR ? { cacheDir: process.env.SPLENDOR_VITE_CACHE_DIR } : {}),
         // fix weird issue on mac
