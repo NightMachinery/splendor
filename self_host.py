@@ -579,6 +579,9 @@ def snapshot_jar(src, dest_dir):
 def start_backend(inst, p, lsjar, gsjar):
     """Start the LS, then the GS, and wait until the GS registered its services.
 
+    Both JVMs listen on 127.0.0.1 only, so the public side can reach them only
+    through Caddy and its route rules.
+
     The service token reaches both JVMs as an environment variable that the
     tmux shell reads from the token file. It never appears on a command line,
     so ps and the tmux client arguments only show the file's path.
@@ -588,7 +591,8 @@ def start_backend(inst, p, lsjar, gsjar):
     tmux_new(
         inst.sessions["lobby"],
         f"SPLENDOR_SERVICE_TOKEN=\"$(cat {token_file})\" "
-        f"java -jar {shq(lsjar)} --server.port={p['lobby']} --api.games.url=/api/sessions/ --spring.profiles.active=sqlite",
+        f"java -jar {shq(lsjar)} --server.address=127.0.0.1 --server.port={p['lobby']} "
+        f"--api.games.url=/api/sessions/ --spring.profiles.active=sqlite",
         extra_env={"LS_SQLITE_PATH": str(inst.sqlite)},
         log=inst.log("lobby"),
     )
@@ -598,7 +602,8 @@ def start_backend(inst, p, lsjar, gsjar):
         inst.sessions["game"],
         # Spring's relaxed binding maps LS_SERVER_PASSWORD to LS.server.password.
         f"LS_SERVER_PASSWORD=\"$(cat {token_file})\" "
-        f"java -jar {shq(gsjar)} --server.port={p['game']} --LS.location=http://127.0.0.1:{p['lobby']} "
+        f"java -jar {shq(gsjar)} --server.address=127.0.0.1 --server.port={p['game']} "
+        f"--LS.location=http://127.0.0.1:{p['lobby']} "
         f"--gs.location=http://127.0.0.1:{p['game']} --save.location={shq(inst.saves)}",
         log=inst.log("game"),
     )
@@ -682,13 +687,40 @@ def ensure_client_dist(no_build):
 
 # -------------------------------------------------------------------- Caddy
 
+# Path segments a player action URL may contain. No leading dot, so ".." can
+# never pass for a session id, player name or action.
+_SEGMENT = r"[A-Za-z0-9_~-][A-Za-z0-9_.~-]*"
+GS_PLAYER_ACTION_RE = rf"^/api/sessions/{_SEGMENT}/players/{_SEGMENT}/actions/{_SEGMENT}$"
+
+
 def site_routes(p, frontend):
-    """The routes shared by the public site and the private instance fronts."""
+    """The routes shared by the public site and the private instance fronts.
+
+    Service-only routes are refused from the public side. The GS registers
+    with the LS, and the LS launches games on the GS, over 127.0.0.1 directly,
+    so neither call ever needs to pass through Caddy:
+    - /ls/api/gameservices*: anything but GET (registering, unregistering and
+      savegame writes are for the game service or an admin). The match is any
+      path containing /gameservices, in any case, so variants such as
+      /api/gameservices;x/... are caught without relying on the LS firewall.
+    - /gs/*: every PUT except a player action. That blocks the LS->GS launch
+      call PUT /api/sessions/{{id}}, which has no authentication.
+    """
     return f"""    encode gzip zstd
     handle_path /ls/* {{
+        @ls_service_only {{
+            not method GET
+            path_regexp (?i)/gameservices
+        }}
+        respond @ls_service_only "Forbidden: service-only route" 403
         reverse_proxy 127.0.0.1:{p['lobby']}
     }}
     handle_path /gs/* {{
+        @gs_service_only {{
+            method PUT
+            not path_regexp {GS_PLAYER_ACTION_RE}
+        }}
+        respond @gs_service_only "Forbidden: service-only route" 403
         reverse_proxy 127.0.0.1:{p['game']}
     }}
     handle {{
