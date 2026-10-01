@@ -582,11 +582,20 @@ def snapshot_jar(src, dest_dir):
     return dest
 
 
+def java_heap(var, default="384m"):
+    """-Xmx flag from an environment variable such as SPLENDOR_LS_HEAP=512m."""
+    value = os.environ.get(var, "").strip() or default
+    if not re.fullmatch(r"[0-9]+[kKmMgG]?", value):
+        raise SystemExit(f"{var} must look like 384m or 1g, not {value!r}")
+    return f"-Xmx{value}"
+
+
 def start_backend(inst, p, lsjar, gsjar):
     """Start the LS, then the GS, and wait until the GS registered its services.
 
     Both JVMs listen on 127.0.0.1 only, so the public side can reach them only
-    through Caddy and its route rules.
+    through Caddy and its route rules. Their heaps are capped (SPLENDOR_LS_HEAP,
+    SPLENDOR_GS_HEAP, default 384m each) so they fit a 3 GB server together.
 
     The service token reaches both JVMs as an environment variable that the
     tmux shell reads from the token file. It never appears on a command line,
@@ -597,7 +606,7 @@ def start_backend(inst, p, lsjar, gsjar):
     tmux_new(
         inst.sessions["lobby"],
         f"SPLENDOR_SERVICE_TOKEN=\"$(cat {token_file})\" "
-        f"java -jar {shq(lsjar)} --server.address=127.0.0.1 --server.port={p['lobby']} "
+        f"java {java_heap('SPLENDOR_LS_HEAP')} -jar {shq(lsjar)} --server.address=127.0.0.1 --server.port={p['lobby']} "
         f"--api.games.url=/api/sessions/ --spring.profiles.active=sqlite",
         extra_env={"LS_SQLITE_PATH": str(inst.sqlite)},
         log=inst.log("lobby"),
@@ -608,7 +617,7 @@ def start_backend(inst, p, lsjar, gsjar):
         inst.sessions["game"],
         # Spring's relaxed binding maps LS_SERVER_PASSWORD to LS.server.password.
         f"LS_SERVER_PASSWORD=\"$(cat {token_file})\" "
-        f"java -jar {shq(gsjar)} --server.address=127.0.0.1 --server.port={p['game']} "
+        f"java {java_heap('SPLENDOR_GS_HEAP')} -jar {shq(gsjar)} --server.address=127.0.0.1 --server.port={p['game']} "
         f"--LS.location=http://127.0.0.1:{p['lobby']} "
         f"--gs.location=http://127.0.0.1:{p['game']} --save.location={shq(inst.saves)}",
         log=inst.log("game"),
@@ -825,15 +834,123 @@ def start_web(inst, p, mode):
 DEFAULT = Instance(None)
 
 
+MVN_FLAGS = ["-DskipTests", "-Dmaven.javadoc.skip=true", "-Dpmd.skip=true", "-Dcheckstyle.skip=true"]
+BUILD = DATA / "build"
+JARS_STAGING = BUILD / "jars-staging"
+PREVIOUS = BUILD / "previous"
+
+
+def build_jars(clean=False):
+    """mvn package both services into their target/ directories.
+
+    The default instance runs from copies in .self-host/jars, so rebuilding
+    target/ (even with clean) never touches the running services.
+    """
+    goals = (["clean"] if clean else []) + ["package"]
+    run(["mvn", *MVN_FLAGS, *goals], cwd=ROOT / "server", env=env_with_proxy())
+    run(["mvn", "-Psqlite", *MVN_FLAGS, *goals], cwd=ROOT / "setup" / "LobbyService", env=env_with_proxy())
+
+
+def stage_target_jars():
+    """Copy the freshly built jars to the staging dir, checking they are complete."""
+    check_jar(LS_JAR, LS_BUILD_HINT)
+    check_jar(GS_JAR, GS_BUILD_HINT)
+    if JARS_STAGING.exists():
+        shutil.rmtree(JARS_STAGING)
+    snapshot_jar(LS_JAR, JARS_STAGING)
+    snapshot_jar(GS_JAR, JARS_STAGING)
+    return JARS_STAGING
+
+
+def replace_dir(new, live, keep=None):
+    """Rename new into live's place. The old live dir moves to keep, or is deleted."""
+    if live.exists():
+        if keep is not None:
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            os.rename(live, keep)
+        else:
+            old = live.with_name(live.name + f".old-{os.getpid()}")
+            os.rename(live, old)
+            shutil.rmtree(old, ignore_errors=True)
+    os.rename(new, live)
+
+
+def keep_running_build():
+    """Before a clean build, copy the jars a pre-staging deployment runs from.
+
+    Deployments started by older versions of this script run straight from
+    target/. The first redeploy with this version would otherwise have no
+    previous build to roll back to, because mvn clean deletes target/. (The
+    running JVMs keep their open, now unlinked, jar files, so they are fine.)
+    """
+    if all((DEFAULT.jars / jar.name).exists() for jar in (LS_JAR, GS_JAR)):
+        return
+    if not (LS_JAR.exists() and GS_JAR.exists()):
+        return
+    try:
+        check_jar(LS_JAR, LS_BUILD_HINT)
+        check_jar(GS_JAR, GS_BUILD_HINT)
+    except SystemExit:
+        return
+    print(f"Keeping the current target/ jars in {DEFAULT.jars} so a failed redeploy can roll back to them.")
+    snapshot_jar(LS_JAR, DEFAULT.jars)
+    snapshot_jar(GS_JAR, DEFAULT.jars)
+
+
+def lobby_sessions(lobby_port):
+    """The LS's sessions as {id: session}, or None when the LS does not answer."""
+    try:
+        status, body = http_get(f"http://127.0.0.1:{lobby_port}/api/sessions", timeout=10)
+        if status != 200:
+            return None
+        sessions = json.loads(body).get("sessions", {})
+        return sessions if isinstance(sessions, dict) else None
+    except Exception:
+        return None
+
+
+def check_no_sessions(p, force, when):
+    """Refuse to go on while the LS holds sessions, unless force. Sessions live in memory only."""
+    sessions = lobby_sessions(p["lobby"])
+    if not sessions:
+        return
+    print(f"The lobby service has {len(sessions)} session(s) {when}; a restart deletes them:")
+    for sid, ses in sessions.items():
+        game = (ses.get("gameParameters") or {}).get("name", "?")
+        state = "LAUNCHED" if ses.get("launched") else "waiting"
+        players = ", ".join(ses.get("players") or [])
+        print(f"  {sid}  {game}  {state}  players: {players}")
+    if force:
+        print("--force given: continuing anyway.")
+        return
+    raise SystemExit("Refusing to stop the services while sessions exist. Wait for the games to end, "
+                     "or rerun with --force to discard them.")
+
+
 def build(dev=False):
+    """Install client dependencies and build both jars into target/ (dev-start uses this)."""
     DATA.mkdir(exist_ok=True)
     if not (CLIENT / "pnpm-lock.yaml").exists():
         run(["pnpm", "import"], cwd=CLIENT, env=env_with_proxy())
     run(["pnpm", "install", "--frozen-lockfile", "--prefer-offline"], cwd=CLIENT, env=env_with_proxy())
     if not dev:
-        run(["pnpm", "build"], cwd=CLIENT, env=env_with_proxy())
-    run(["mvn", "-DskipTests", "-Dmaven.javadoc.skip=true", "-Dpmd.skip=true", "package"], cwd=ROOT / "server", env=env_with_proxy())
-    run(["mvn", "-Psqlite", "-DskipTests", "-Dmaven.javadoc.skip=true", "-Dpmd.skip=true", "package"], cwd=ROOT / "setup" / "LobbyService", env=env_with_proxy())
+        with file_lock(DATA / "client-build.lock"):
+            swap_dist(build_client_staging())
+    build_jars()
+
+
+def build_release():
+    """Build the client and both jars into staging copies; nothing live is touched.
+
+    Returns (dist_staging, jars_staging). A failed build therefore leaves the
+    running site exactly as it was.
+    """
+    DATA.mkdir(exist_ok=True)
+    run(["pnpm", "install", "--frozen-lockfile", "--prefer-offline"], cwd=CLIENT, env=env_with_proxy())
+    with file_lock(DATA / "client-build.lock"):
+        dist_staging = build_client_staging()
+    build_jars(clean=True)
+    return dist_staging, stage_target_jars()
 
 
 def stop(_args=None):
@@ -848,15 +965,12 @@ def stop(_args=None):
     print("Stopped Splendor self-host tmux sessions." + (f" Ports still busy: {busy}" if busy else ""))
 
 
-def start(args, dev=False):
-    ensure_tools(["tmux", "java", "lsof"] + (["pnpm", "node"] if dev else ["caddy"]))
-    stop()
+def launch_default(args, dev=False):
+    """Start the stopped default instance from the jars in .self-host/jars."""
     p = ports()
     DEFAULT.prepare()
     update_caddy(args.url, p, dev=dev)
-    check_jar(LS_JAR, LS_BUILD_HINT)
-    check_jar(GS_JAR, GS_BUILD_HINT)
-    start_backend(DEFAULT, p, LS_JAR, GS_JAR)
+    start_backend(DEFAULT, p, DEFAULT.jars / LS_JAR.name, DEFAULT.jars / GS_JAR.name)
     if dev:
         tmux_new(
             SESSIONS["dev"], f"pnpm dev --host 127.0.0.1 --port {p['dev']}", cwd=CLIENT,
@@ -868,24 +982,69 @@ def start(args, dev=False):
     print(f"Logs: {DEFAULT.logs}")
 
 
+def start(args, dev=False):
+    """(Re)start the default instance from the jars currently in target/."""
+    ensure_tools(["tmux", "java", "lsof"] + (["pnpm", "node"] if dev else ["caddy"]))
+    jars = stage_target_jars()
+    stop()
+    replace_dir(jars, DEFAULT.jars)
+    launch_default(args, dev=dev)
+
+
 def setup(args):
     ensure_tools(["tmux", "java", "lsof", "mvn", "pnpm", "node", "caddy"])
+    dist_staging, jars_staging = build_release()
     stop()
     ports(reset=True)
-    build(dev=False)
-    start(args, dev=False)
+    swap_dist(dist_staging)
+    replace_dir(jars_staging, DEFAULT.jars)
+    launch_default(args)
 
 
 def redeploy(args):
+    """Build first, stop only after the build succeeded, and roll back if the new build does not start.
+
+    1. Refuse early if the LS holds sessions (unless --force).
+    2. Build the client into a staging dir and the jars into staging copies.
+    3. Check for sessions again, since players may have started one meanwhile.
+    4. Stop, swap the new client and jars in (keeping the previous ones), start.
+    5. If the new build does not come up with every game service registered,
+       stop it, put the previous client and jars back and start those.
+    """
     ensure_tools(["tmux", "java", "lsof", "mvn", "pnpm", "node", "caddy"])
+    p = read_ports()
+    check_no_sessions(p, args.force, "before the build")
+    keep_running_build()
+    dist_staging, jars_staging = build_release()
+    check_no_sessions(p, args.force, "after the build")
     stop()
-    build(dev=False)
-    start(args, dev=False)
+    if PREVIOUS.exists():
+        shutil.rmtree(PREVIOUS)
+    replace_dir(dist_staging, DIST, keep=PREVIOUS / "dist")
+    replace_dir(jars_staging, DEFAULT.jars, keep=PREVIOUS / "jars")
+    try:
+        launch_default(args)
+    except (SystemExit, Exception) as exc:
+        if not (PREVIOUS / "jars").exists():
+            raise
+        print(f"The new build failed to start ({exc}). Rolling back to the previous build.", file=sys.stderr)
+        stop()
+        failed = BUILD / "failed"
+        if failed.exists():
+            shutil.rmtree(failed)
+        replace_dir(PREVIOUS / "jars", DEFAULT.jars, keep=failed / "jars")
+        if (PREVIOUS / "dist").exists():
+            replace_dir(PREVIOUS / "dist", DIST, keep=failed / "dist")
+        launch_default(args)
+        shutil.rmtree(PREVIOUS, ignore_errors=True)
+        raise SystemExit(f"Redeploy failed and was rolled back. The failed build is in {failed}; "
+                         f"its logs are {DEFAULT.log('lobby')}.1 and {DEFAULT.log('game')}.1.")
+    shutil.rmtree(PREVIOUS, ignore_errors=True)
+    print("Redeploy finished.")
 
 
 def dev_start(args):
     ensure_tools(["tmux", "java", "lsof", "mvn", "pnpm", "node"])
-    stop()
     build(dev=True)
     start(args, dev=True)
 
@@ -1029,6 +1188,8 @@ def main():
                         help="instance-start: web front is a private Caddy over client/dist (static) or astro dev (dev)")
     parser.add_argument("--no-build", action="store_true",
                         help="instance-start: do not build client/dist or install node_modules")
+    parser.add_argument("--force", action="store_true",
+                        help="redeploy: go ahead even if the lobby service still holds sessions")
     args = parser.parse_args()
     if args.name and not args.command.startswith("instance-"):
         parser.error(f"{args.command} does not take an instance name")
