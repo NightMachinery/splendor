@@ -17,33 +17,31 @@ it should not create page-level horizontal scroll.
 Prefer preserving existing DOM selectors when changing layout: the animation and
 modal scripts clone/query board nodes directly.
 
-## Full-stack E2E
+## Tests
 
-The mocked Playwright suite remains the default:
-
-```bash
-cd client
-npm test
-```
-
-The live full-stack smoke suite is opt-in and expects real services to be
-running. Start the app with the self-host dev workflow or equivalent, then run:
+All test suites, how to run them and the current list of known layout debt
+are in [testing.md](testing.md). In short, from `client/`:
 
 ```bash
-./self_host.py dev-start --url https://splendor.pinky.lilf.ir
-cd client
-E2E_FULL_STACK=1 E2E_BASE_URL=http://127.0.0.1:<printed-dev-port> npm run test:e2e
+pnpm test                  # mocked suite, including the layout checks
+pnpm run test:e2e:fake     # whole games on the real board, offline
+E2E_INSTANCE=e2e pnpm run test:e2e   # the same against an isolated instance
 ```
 
-The full-stack test creates local-auth users, creates/joins/launches a real
-Lobby Service session, performs real Game Service actions, and checks the board
-at desktop and mobile viewports. Use `E2E_LS_URL` and `E2E_GS_URL` to bypass a
-frontend proxy when needed.
+The layout checks (`client/tests/layout.spec.ts`) fail on any element that
+sticks out past the viewport and on modal controls covered by other
+elements. Pages that fail today on phones are listed as known layout debt and
+show up as expected failures; a responsive change that fixes one should
+remove it from `KNOWN_DEBT`.
 
 ## Chrome CDP visual probes
 
 A local CDP helper lives in `skills/chrome-cdp`. It can screenshot and probe a
-running board without relying on browser MCP tools:
+running board without relying on browser MCP tools. Point it at an isolated
+instance or at the fake stack (`node client/tests/fixtures/fake-stack.mjs
+--web-port PORT --dist DIR`, see [testing.md](testing.md)), never at
+production. The modules in `client/tests/e2e/lib/` (`splendor-api.mjs`,
+`bot.mjs`, `stack.mjs`) can create the users and the game to look at:
 
 ```bash
 node skills/chrome-cdp/shot.mjs --session=<id> --board=orient --user=<username> \
