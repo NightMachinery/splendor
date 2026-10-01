@@ -83,7 +83,7 @@ test("a fourth reserved card is refused", async ({ api }) => {
     await probe(api, id, alice, "RESERVE_CARD", { cardId: state.tier3Deck.visibleCards[0].id }, "a fourth reservation");
 });
 
-test("overpaying for a card is refused", async ({ api }, testInfo) => {
+test("overpaying for a card is refused", async ({ api }) => {
     const users = await api.createUsers(2, "E2E Overpay");
     const id = await api.createGame({ users, version: "BASE_ORIENT" });
     const seed = seedFor("overpay");
