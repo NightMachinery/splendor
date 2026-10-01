@@ -10,13 +10,18 @@ import { GAME_VERSIONS } from "./rules.mjs";
  * E2E_GS_URL (see stack.mjs); without one every full-stack test skips.
  * Knobs, all optional:
  *   E2E_SEED       bot seed (default 1); each game derives its own from it
+ *   E2E_SEEDS      whole API games per version and player count (default 2),
+ *                  each with its own seed
  *   E2E_VERSIONS   comma-separated game versions (default: all four)
  *   E2E_PLAYERS    comma-separated player counts (default: 2,3,4)
- *   E2E_UI_TURNS   rendered games: which projects play the browser seat's
- *                  token turns through the UI: "desktop" (default), "all",
- *                  "off", or "force" (all projects, clicks dispatched so
- *                  covered controls do not block)
- *   E2E_LAYOUT_EVERY  rendered games: layout probe every N turns (default 10)
+ *   E2E_UI_TURNS   rendered games: which seats play their token turns
+ *                  through the board UI instead of the API: "off" (default),
+ *                  "desktop", "all", or "force" (both seats, clicks
+ *                  dispatched so covered controls do not block)
+ *   E2E_LAYOUT_EVERY  rendered games: mobile layout probe every N turns (default 10, 0 = off)
+ *   E2E_DOM_EVERY  rendered games: compare the DOM with the state every N turns (default 5)
+ *   E2E_IDLE_MS    rendered games: length of each idle window in which state
+ *                  requests are counted (default 5000)
  */
 
 export const stack = resolveStack();
@@ -29,6 +34,12 @@ for (const v of VERSIONS) {
     if (!(GAME_VERSIONS as readonly string[]).includes(v)) throw new Error(`E2E_VERSIONS: unknown game version ${v}`);
 }
 export const PLAYER_COUNTS: number[] = list(process.env.E2E_PLAYERS).length ? list(process.env.E2E_PLAYERS).map(Number) : [2, 3, 4];
+for (const n of PLAYER_COUNTS) {
+    if (!Number.isInteger(n) || n < 2 || n > 4) throw new Error(`E2E_PLAYERS: ${n} is not a player count from 2 to 4`);
+}
+/** Whole API games per version and player count. */
+export const SEEDS_PER_GAME = Number(process.env.E2E_SEEDS || 2);
+if (!Number.isInteger(SEEDS_PER_GAME) || SEEDS_PER_GAME < 1) throw new Error(`E2E_SEEDS=${process.env.E2E_SEEDS}: use a whole number of at least 1`);
 
 /** `test` with an `api` fixture: a SplendorApi for the configured stack, checked online. Skips without a stack. */
 export const test = base.extend<{ api: SplendorApi }>({
