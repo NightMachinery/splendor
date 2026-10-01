@@ -31,8 +31,14 @@ public class AuthTokenService {
     @Autowired
     private PlayerRepository playerRepository;
 
-    @Autowired
-    private BCryptPasswordEncoder passwordEncoder;
+    /**
+     * Hashes a token into the account's OAuth password. The plain token is stored in the same row
+     * (authToken), so a slow hash protects nothing here, while the shared cost-12 encoder made every
+     * unauthenticated POST /api/local-auth with a new token burn about half a CPU second. Cost 4 is
+     * BCrypt's minimum; the shared encoder still verifies these hashes because BCrypt reads the cost
+     * from the hash.
+     */
+    private static final BCryptPasswordEncoder TOKEN_HASHER = new BCryptPasswordEncoder(4, RNG);
 
     public AuthTokenService() {
         String configured = System.getenv(SERVICE_TOKEN_ENV);
@@ -76,13 +82,13 @@ public class AuthTokenService {
             if (!serviceToken.equals(player.getAuthToken())) {
                 // The token was rotated. Replace the stored token and the OAuth password (bcrypt of the token).
                 player.setAuthToken(serviceToken);
-                player.setPassword(passwordEncoder.encode(serviceToken));
+                player.setPassword(TOKEN_HASHER.encode(serviceToken));
                 changed = true;
                 LOGGER.info("Service account token updated from {}.", SERVICE_TOKEN_ENV);
             }
             return changed ? playerRepository.save(player) : player;
         }
-        Player player = new Player(SERVICE_ACCOUNT, "FFFFFF", passwordEncoder.encode(serviceToken), Role.ROLE_SERVICE);
+        Player player = new Player(SERVICE_ACCOUNT, "FFFFFF", TOKEN_HASHER.encode(serviceToken), Role.ROLE_SERVICE);
         player.setAuthToken(serviceToken);
         player.setDisplayName("Service");
         return playerRepository.save(player);
@@ -126,7 +132,7 @@ public class AuthTokenService {
         String cleanDisplay = cleanDisplayName(displayName);
         String base = slug(cleanDisplay);
         String username = uniqueUsername(base);
-        Player player = new Player(username, randomColour(), passwordEncoder.encode(token), Role.ROLE_PLAYER);
+        Player player = new Player(username, randomColour(), TOKEN_HASHER.encode(token), Role.ROLE_PLAYER);
         player.setAuthToken(token);
         player.setDisplayName(cleanDisplay);
         return playerRepository.save(player);
