@@ -128,10 +128,12 @@ target/
 *.iml
 .idea/
 dist/
+# docs/ holds generated Javadoc (ignored) next to the prose docs (tracked).
 docs/*
-!docs/self-hosting.md
+!docs/*.md
 server/docs/
 
 saves/
 savesTest/
 .self-host/
+__pycache__/
