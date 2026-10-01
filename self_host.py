@@ -230,8 +230,14 @@ def tmux_env_args(extra_env=None):
 
 
 def tmux_alive(name):
-    return subprocess.run(["tmux", "has-session", "-t", f"={name}"],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    """Whether session name exists and its process is still running.
+
+    With remain-on-exit on (a common tmux setting), a session outlives its
+    process as a dead pane, so the session existing proves nothing.
+    """
+    res = subprocess.run(["tmux", "list-panes", "-s", "-t", f"={name}", "-F", "#{pane_dead}"],
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    return res.returncode == 0 and any(line.strip() == "0" for line in res.stdout.splitlines())
 
 
 def tmux_kill(name):
