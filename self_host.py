@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -181,6 +182,7 @@ class Instance:
         self.jars = self.dir / "jars"
         self.caddyfile = self.dir / "Caddyfile"
         self.info_file = self.dir / "instance.json"
+        self.token_file = self.dir / "service-token"
 
     @property
     def label(self):
@@ -194,6 +196,25 @@ class Instance:
             d.mkdir(parents=True, exist_ok=True)
         # The sqlite file holds every player's token; keep the tree private.
         os.chmod(self.dir, 0o700)
+
+    def service_token_file(self):
+        """Return the file holding this data dir's service token, creating it (0600) once.
+
+        The LS accepts this token as the game service's identity. The GS uses a
+        password that starts with "selfhost_" directly as its token (see
+        server/.../control/Authentication.java), so the prefix is required.
+        """
+        if not self.token_file.exists():
+            token = "selfhost_svc_" + secrets.token_hex(24)
+            fd = os.open(self.token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as fh:
+                fh.write(token + "\n")
+        os.chmod(self.token_file, 0o600)
+        token = self.token_file.read_text().strip()
+        if not token.startswith("selfhost_") or not re.fullmatch(r"[A-Za-z0-9_]+", token):
+            raise SystemExit(f"{self.token_file} must hold one token that starts with selfhost_ "
+                             "(letters, digits, '_'). Delete it to generate a new one.")
+        return self.token_file
 
 
 # --------------------------------------------------------------------- tmux
@@ -556,10 +577,17 @@ def snapshot_jar(src, dest_dir):
 
 
 def start_backend(inst, p, lsjar, gsjar):
-    """Start the LS, then the GS, and wait until the GS registered its services."""
+    """Start the LS, then the GS, and wait until the GS registered its services.
+
+    The service token reaches both JVMs as an environment variable that the
+    tmux shell reads from the token file. It never appears on a command line,
+    so ps and the tmux client arguments only show the file's path.
+    """
     inst.prepare()
+    token_file = shq(inst.service_token_file())
     tmux_new(
         inst.sessions["lobby"],
+        f"SPLENDOR_SERVICE_TOKEN=\"$(cat {token_file})\" "
         f"java -jar {shq(lsjar)} --server.port={p['lobby']} --api.games.url=/api/sessions/ --spring.profiles.active=sqlite",
         extra_env={"LS_SQLITE_PATH": str(inst.sqlite)},
         log=inst.log("lobby"),
@@ -568,9 +596,10 @@ def start_backend(inst, p, lsjar, gsjar):
                   session=inst.sessions["lobby"], log=inst.log("lobby"))
     tmux_new(
         inst.sessions["game"],
+        # Spring's relaxed binding maps LS_SERVER_PASSWORD to LS.server.password.
+        f"LS_SERVER_PASSWORD=\"$(cat {token_file})\" "
         f"java -jar {shq(gsjar)} --server.port={p['game']} --LS.location=http://127.0.0.1:{p['lobby']} "
-        f"--LS.server.password=selfhost_service_token --gs.location=http://127.0.0.1:{p['game']} "
-        f"--save.location={shq(inst.saves)}",
+        f"--gs.location=http://127.0.0.1:{p['game']} --save.location={shq(inst.saves)}",
         log=inst.log("game"),
     )
     wait_for_http(f"http://127.0.0.1:{p['game']}/api/online", "Game service",

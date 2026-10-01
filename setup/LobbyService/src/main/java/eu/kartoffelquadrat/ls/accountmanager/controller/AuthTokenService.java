@@ -6,16 +6,27 @@ import eu.kartoffelquadrat.ls.accountmanager.model.Role;
 import java.security.SecureRandom;
 import java.util.Locale;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 /** Local intranet token auth used by the self-hosted client. */
 @Service
 public class AuthTokenService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AuthTokenService.class);
     private static final String TOKEN_PREFIX = "selfhost_";
-    private static final String SERVICE_TOKEN = "selfhost_service_token";
+    /** Environment variable that holds the secret service token (self_host.py generates one). */
+    public static final String SERVICE_TOKEN_ENV = "SPLENDOR_SERVICE_TOKEN";
+    /** Old hard-coded token. It is public, so it is only used when the variable is unset. */
+    private static final String LEGACY_SERVICE_TOKEN = "selfhost_service_token";
+    private static final String SERVICE_ACCOUNT = "xox";
     private static final SecureRandom RNG = new SecureRandom();
+
+    private final String serviceToken;
 
     @Autowired
     private PlayerRepository playerRepository;
@@ -23,23 +34,56 @@ public class AuthTokenService {
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
+    public AuthTokenService() {
+        String configured = System.getenv(SERVICE_TOKEN_ENV);
+        if (configured == null || configured.trim().isEmpty()) {
+            LOGGER.warn("**********************************************************************");
+            LOGGER.warn("{} is not set. Falling back to the PUBLIC legacy service token.", SERVICE_TOKEN_ENV);
+            LOGGER.warn("Anyone who can reach this Lobby Service can then act as the game service:");
+            LOGGER.warn("unregister games, delete running sessions, register fake services.");
+            LOGGER.warn("Set {} to a random secret (./self_host.py does this for you).", SERVICE_TOKEN_ENV);
+            LOGGER.warn("**********************************************************************");
+            serviceToken = LEGACY_SERVICE_TOKEN;
+        } else {
+            serviceToken = configured.trim();
+            if (!serviceToken.startsWith(TOKEN_PREFIX)) {
+                LOGGER.warn("{} does not start with \"{}\". The game server only uses a password with that "
+                        + "prefix directly as its token.", SERVICE_TOKEN_ENV, TOKEN_PREFIX);
+            }
+        }
+    }
+
+    /** Rotate the stored service account to the current token at startup, so an old token stops working. */
+    @EventListener(ApplicationReadyEvent.class)
+    public void syncServiceAccount() {
+        ensureServiceAccount();
+    }
+
     public String serviceToken() {
         ensureServiceAccount();
-        return SERVICE_TOKEN;
+        return serviceToken;
     }
 
     public Player ensureServiceAccount() {
-        Optional<Player> existing = playerRepository.findById("xox");
+        Optional<Player> existing = playerRepository.findById(SERVICE_ACCOUNT);
         if (existing.isPresent()) {
             Player player = existing.get();
+            boolean changed = false;
             if (player.getRole() != Role.ROLE_SERVICE) {
                 player.setRole(Role.ROLE_SERVICE);
-                playerRepository.save(player);
+                changed = true;
             }
-            return player;
+            if (!serviceToken.equals(player.getAuthToken())) {
+                // The token was rotated. Replace the stored token and the OAuth password (bcrypt of the token).
+                player.setAuthToken(serviceToken);
+                player.setPassword(passwordEncoder.encode(serviceToken));
+                changed = true;
+                LOGGER.info("Service account token updated from {}.", SERVICE_TOKEN_ENV);
+            }
+            return changed ? playerRepository.save(player) : player;
         }
-        Player player = new Player("xox", "FFFFFF", passwordEncoder.encode(SERVICE_TOKEN), Role.ROLE_SERVICE);
-        player.setAuthToken(SERVICE_TOKEN);
+        Player player = new Player(SERVICE_ACCOUNT, "FFFFFF", passwordEncoder.encode(serviceToken), Role.ROLE_SERVICE);
+        player.setAuthToken(serviceToken);
         player.setDisplayName("Service");
         return playerRepository.save(player);
     }
@@ -48,10 +92,15 @@ public class AuthTokenService {
         if (token == null || token.trim().isEmpty()) {
             return null;
         }
-        if (SERVICE_TOKEN.equals(token)) {
+        if (serviceToken.equals(token)) {
             return ensureServiceAccount();
         }
-        return playerRepository.findByAuthToken(token).orElse(null);
+        Player player = playerRepository.findByAuthToken(token).orElse(null);
+        // Service rights come only from the configured token, never from a stale stored one.
+        if (player != null && player.getRole() == Role.ROLE_SERVICE) {
+            return null;
+        }
+        return player;
     }
 
     public boolean isRole(String token, Role role) {
