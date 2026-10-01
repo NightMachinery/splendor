@@ -13,6 +13,7 @@ The modules are:
 - `rules-pay.js`: payment, affordability, reserving and sacrifices.
 - `progress.js`: how far a player is from a noble, a city or a Trading Posts
   power.
+- `errors.js`: player copy for Game Service error messages.
 
 They mirror the server model in `server/src/main/java/ca/hexanome04/splendorgame/model`
 (the rules themselves are described in [the game rules page](../game-rules.md)).
@@ -231,6 +232,45 @@ count.
   the turn in which it is met, and an unlocked power stays unlocked even if a
   sacrifice later lowers the bonuses.
 
+## errors.js
+
+`mapServerError(text, status)` returns `{code, copy, raw}`, where `raw` is the
+trimmed server text for the small print under the copy.
+
+- Status 0, or a browser's failed-fetch message ("Failed to fetch",
+  "NetworkError…", "Load failed"), gives `NETWORK`: "Couldn't reach the table.
+  Check your connection and try again."
+- Status 500 and up gives `SERVER_ERROR`: "The server hit a problem. Checking
+  whether your move went through…". The submit pipeline then waits for the
+  next state before it shows anything final.
+- Status 401 gives `TOKEN_MISMATCH`.
+- Otherwise the trimmed text is matched against `ERROR_RULES` in order, as a
+  case-insensitive prefix. Matching by prefix means a server message can grow
+  a longer ending without breaking the copy: the real server's "You would end
+  up with more than 10 tokens. Return tokens (putBackTokens) to get back down
+  to 10." still maps. A few free-form messages carry a card id before the
+  part that matters, and are matched by a regular expression instead.
+- Anything else gives `UNKNOWN`: "The server refused that move."
+
+The codes are the server's ActionResult names where one exists. The design's
+table covers the ActionResult messages. The module also maps the free-form
+`SplendorException` messages a player can trigger, so none of them falls back
+to the default copy:
+
+- malformed bodies, including the decoder's "Invalid data given for action …"
+  wrapper (`MALFORMED`);
+- a card that has left the board (`CARD_GONE`);
+- the Satchel prerequisite on a purchase or a cascade (`SATCHEL_NEEDS_GEM_CARD`);
+- a satchel colour sent for a card that is not an unassigned satchel
+  (`SATCHEL_ALREADY_SET`);
+- a cascade card of the wrong tier (`CASCADE_WRONG_TIER`);
+- nobles and cities that are gone or not qualified for (`NOBLE_GONE`,
+  `NOBLE_NOT_QUALIFIED`, `CITY_GONE`, `CITY_NOT_QUALIFIED`, `NO_CITIES`);
+- a session or seat that does not exist (`SESSION_GONE`, `NOT_SEATED`).
+
+`ERROR_COPY` holds the copy of every code, for callers that need it without a
+server message.
+
 ## Tests
 
 Run them with `pnpm test:unit` in `client/`, or one file at a time with
@@ -264,6 +304,11 @@ e2e bot (`tests/e2e/lib/bot.mjs`, for seeded games and its reference
 - `sp-progress.test.mjs`: noble, city and power progress against
   `Engine.qualifiesForNoble`, `Engine.qualifiesCities` and the engine's
   Trading Posts checks, on random bonuses and on the seeded states.
+- `sp-errors.test.mjs`: the design's copy table word for word, case and space
+  handling, the real server's wordings and transport failures. It triggers 51
+  refusals from the engine and checks that each maps to its own copy, and that
+  together they cover every message text and every throw site in the engine
+  source.
 
 The take cross-check is the slowest file, at about 5 seconds.
 
