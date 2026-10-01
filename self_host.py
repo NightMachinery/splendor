@@ -47,7 +47,8 @@ INSTANCE_PORT_BASE = 35100
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 # The game services the GS registers (server/.../control/Initializer.java).
 # SPLENDOR_EXPECTED_SERVICES=a,b,c overrides this list.
-EXPECTED_SERVICES = ["splendor_BASE_ORIENT", "splendor_BASE_ORIENT_CITIES", "splendor_BASE_ORIENT_TRADE_ROUTES"]
+EXPECTED_SERVICES = ["splendor_BASE_ORIENT", "splendor_BASE_ORIENT_CITIES", "splendor_BASE_ORIENT_CITIES_NOBLES",
+                     "splendor_BASE_ORIENT_TRADE_ROUTES"]
 # Logged by the GS once every service is registered.
 GS_REGISTERED_LOG_LINE = "Registered game on lobby service"
 CLIENT_INPUTS = ["src", "public", "astro.config.mjs", "package.json", "pnpm-lock.yaml",

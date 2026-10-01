@@ -292,10 +292,12 @@ and record them in their own `ports.json`.
   register (default 240). A service that exits fails the start at once.
 - `SPLENDOR_EXPECTED_SERVICES`: comma-separated game service names a start
   waits for. The default is `splendor_BASE_ORIENT`,
-  `splendor_BASE_ORIENT_CITIES` and `splendor_BASE_ORIENT_TRADE_ROUTES`. A GS
-  that registers more (such as a Cities variant with nobles) still passes,
-  because the start also waits for the GS's own "Registered game on lobby
-  service" log line, which it prints after the last registration.
+  `splendor_BASE_ORIENT_CITIES`, `splendor_BASE_ORIENT_CITIES_NOBLES` and
+  `splendor_BASE_ORIENT_TRADE_ROUTES`. A GS that registers more still
+  passes, because the start also waits for the GS's own "Registered game on
+  lobby service" log line, which it prints after the last registration. A
+  jar built before Cities with nobles existed registers only three, so a
+  start with such a jar times out unless this variable lists those three.
 - `SPLENDOR_LS_URL`, `SPLENDOR_GS_URL`: backend targets of the Astro dev
   proxy.
 - `SPLENDOR_DIST_DIR`: output directory of `pnpm build` (Astro's `outDir`);
