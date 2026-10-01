@@ -13,6 +13,8 @@
         "test:e2e": "playwright test --project='e2e-*'",
         "test:e2e:api": "playwright test --project=e2e-api",
         "test:e2e:ui": "playwright test --project='e2e-*-*'",
+        "test:e2e:fake": "E2E_FAKE_STACK=1 playwright test --project='e2e-*'",
+        "test:e2e:fake:api": "E2E_FAKE_STACK=1 playwright test --project=e2e-api",
         "test:all": "pnpm run test:unit && pnpm run test"
     },
     "dependencies": {
