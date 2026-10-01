@@ -66,10 +66,10 @@ public class CitiesTests {
         p1.addBonus(TokenType.Brown, 3);
         p1.addBonus(TokenType.Blue, 1);
 
+        // card 03 costs Blue 2, Green 2, Red 1; the bonuses cover the Red and one Blue
         HashMap<TokenType, Integer> tokensToUse = new HashMap<>();
-        tokensToUse.put(TokenType.Blue, 2);
+        tokensToUse.put(TokenType.Blue, 1);
         tokensToUse.put(TokenType.Green, 2);
-        tokensToUse.put(TokenType.Red, 1);
         p1.addTokens(tokensToUse);
 
         CitiesPlayer p2 = (CitiesPlayer) game.getPlayerFromName("Player2");
@@ -99,10 +99,10 @@ public class CitiesTests {
         p1.addBonus(TokenType.Red, 3);
         p1.addBonus(TokenType.Brown, 3);
 
+        // card 03 costs Blue 2, Green 2, Red 1; the Red bonuses cover the Red, so it is not paid
         HashMap<TokenType, Integer> tokensToUse = new HashMap<>();
         tokensToUse.put(TokenType.Blue, 2);
         tokensToUse.put(TokenType.Green, 2);
-        tokensToUse.put(TokenType.Red, 1);
         p1.addTokens(tokensToUse);
 
         CitiesPlayer p2 = (CitiesPlayer) game.getPlayerFromName("Player2");
@@ -266,10 +266,10 @@ public class CitiesTests {
         p1.addBonus(TokenType.Red, 3);
         p1.addBonus(TokenType.Brown, 3);
 
+        // card 03 costs Blue 2, Green 2, Red 1; the Red bonuses cover the Red, so it is not paid
         HashMap<TokenType, Integer> tokensToUse = new HashMap<>();
         tokensToUse.put(TokenType.Blue, 2);
         tokensToUse.put(TokenType.Green, 2);
-        tokensToUse.put(TokenType.Red, 1);
         p1.addTokens(tokensToUse);
 
         CitiesPlayer p2 = (CitiesPlayer) game.getPlayerFromName("Player2");

@@ -52,6 +52,15 @@ public abstract class DevelopmentCard extends Card {
     }
 
     /**
+     * Gets the tier (level) of this card.
+     *
+     * @return tier of the card
+     */
+    public CardTier getCardTier() {
+        return cardTier;
+    }
+
+    /**
      * Gets the number of bonuses associated to this card.
      *
      * @return The integer value of bonus(es) for this card.

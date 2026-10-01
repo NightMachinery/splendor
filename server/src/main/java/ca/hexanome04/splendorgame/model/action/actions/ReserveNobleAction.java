@@ -2,6 +2,7 @@ package ca.hexanome04.splendorgame.model.action.actions;
 
 import ca.hexanome04.splendorgame.model.*;
 import ca.hexanome04.splendorgame.model.action.Action;
+import ca.hexanome04.splendorgame.model.action.ActionJson;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
@@ -22,7 +23,7 @@ public class ReserveNobleAction extends Action {
      * @param reserveNobleId card id to be reserved from game
      */
     public ReserveNobleAction(String reserveNobleId) {
-        super(Actions.RESERVE_CARD);
+        super(Actions.RESERVE_NOBLE);
         this.reserveNobleId = reserveNobleId;
     }
 
@@ -38,10 +39,10 @@ public class ReserveNobleAction extends Action {
 
         ArrayList<ActionResult> result = new ArrayList<>();
 
-        // get card from board
-        NobleCard noble = (NobleCard) game.getCardFromId(this.reserveNobleId);
-        if (noble == null) {
-            throw new SplendorException("Noble with id '" + this.reserveNobleId + "' does not exist.");
+        // get noble from board
+        Card card = game.getCardFromId(this.reserveNobleId);
+        if (!(card instanceof NobleCard noble)) {
+            throw new SplendorException("Noble with id '" + this.reserveNobleId + "' is not on the board.");
         }
 
         // no error handling
@@ -61,8 +62,7 @@ public class ReserveNobleAction extends Action {
     @Override
     public Action decodeAction(JsonObject jobj) {
 
-        // if missing data, throw exception
-        this.reserveNobleId = jobj.get("cardId").getAsString();
+        this.reserveNobleId = ActionJson.requireString(jobj, "cardId");
         return this;
 
     }

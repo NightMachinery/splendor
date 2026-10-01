@@ -6,6 +6,7 @@ import java.util.HashMap;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
+import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.gameversions.orient.OrientGame;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -176,9 +177,12 @@ public class CardTest {
         tokens.put(TokenType.Gold, 2);
         p1.addTokens(tokens);
 
-        // Make sure tokens added to player are successfully retrieved by getter
+        // checking a payment never changes the player; the purchase would use both gold bonuses of one card
         assertThat(dummyReg.isPurchasable(p1, tokens)).isEqualTo(true);
-        assertThat(p1.getBonuses().get(TokenType.Gold)).isEqualTo(0);
+        assertThat(p1.getBonuses().get(TokenType.Gold)).isEqualTo(2);
+        PaymentCheck check = dummyReg.checkPayment(p1, tokens);
+        assertThat(check.goldBonusesToRemove()).isEqualTo(2);
+        assertThat(check.goldCardsToDiscard()).isEqualTo(1);
     }
 
 
@@ -200,9 +204,12 @@ public class CardTest {
         tokens.put(TokenType.Gold, 3);
         p1.addTokens(tokens);
 
-        // Make sure tokens added to player are successfully retrieved by getter
+        // only one of the two gold bonuses is needed, but the whole double gold card is discarded
         assertThat(dummyReg.isPurchasable(p1, tokens)).isEqualTo(true);
-        assertThat(p1.getBonuses().get(TokenType.Gold)).isEqualTo(0);
+        assertThat(p1.getBonuses().get(TokenType.Gold)).isEqualTo(2);
+        PaymentCheck check = dummyReg.checkPayment(p1, tokens);
+        assertThat(check.goldBonusesToRemove()).isEqualTo(2);
+        assertThat(check.goldCardsToDiscard()).isEqualTo(1);
     }
 
     /**
@@ -223,9 +230,75 @@ public class CardTest {
         tokens.put(TokenType.Gold, 3);
         p1.addTokens(tokens);
 
-        // Make sure tokens added to player are successfully retrieved by getter
+        // only one of the two gold bonuses is needed, but the whole double gold card is discarded
         assertThat(dummyReg.isPurchasable(p1, tokens)).isEqualTo(true);
-        assertThat(p1.getBonuses().get(TokenType.Gold)).isEqualTo(0);
+        assertThat(p1.getBonuses().get(TokenType.Gold)).isEqualTo(2);
+        PaymentCheck check = dummyReg.checkPayment(p1, tokens);
+        assertThat(check.goldBonusesToRemove()).isEqualTo(2);
+        assertThat(check.goldCardsToDiscard()).isEqualTo(1);
+    }
+
+    @DisplayName("Ensure overpaying for a card is rejected and checking a payment changes nothing.")
+    @Test
+    public void testCheckPaymentRejectsOverpayment() throws FileNotFoundException {
+        OrientGame game = GameUtils.createNewOrientGame(15, 4);
+        Player p1 = game.getPlayerFromName("Player1");
+
+        HashMap<TokenType, Integer> owned = new HashMap<>();
+        owned.put(TokenType.Red, 5);
+        owned.put(TokenType.Gold, 2);
+        owned.put(TokenType.Blue, 1);
+        p1.addTokens(owned);
+
+        HashMap<TokenType, Integer> tooManyRed = new HashMap<>();
+        tooManyRed.put(TokenType.Red, 5);
+        assertThat(dummyReg.checkPayment(p1, tooManyRed).result()).isEqualTo(ActionResult.PAYMENT_TOO_HIGH);
+
+        HashMap<TokenType, Integer> unneededBlue = new HashMap<>();
+        unneededBlue.put(TokenType.Red, 4);
+        unneededBlue.put(TokenType.Blue, 1);
+        assertThat(dummyReg.checkPayment(p1, unneededBlue).result()).isEqualTo(ActionResult.PAYMENT_TOO_HIGH);
+
+        HashMap<TokenType, Integer> extraGold = new HashMap<>();
+        extraGold.put(TokenType.Red, 3);
+        extraGold.put(TokenType.Gold, 2);
+        assertThat(dummyReg.checkPayment(p1, extraGold).result()).isEqualTo(ActionResult.PAYMENT_TOO_HIGH);
+
+        HashMap<TokenType, Integer> tooLittle = new HashMap<>();
+        tooLittle.put(TokenType.Red, 3);
+        assertThat(dummyReg.checkPayment(p1, tooLittle).result()).isEqualTo(ActionResult.PAYMENT_TOO_LOW);
+
+        HashMap<TokenType, Integer> exact = new HashMap<>();
+        exact.put(TokenType.Red, 3);
+        exact.put(TokenType.Gold, 1);
+        assertThat(dummyReg.checkPayment(p1, exact).isValid()).isTrue();
+
+        HashMap<TokenType, Integer> negative = new HashMap<>();
+        negative.put(TokenType.Red, 5);
+        negative.put(TokenType.Blue, -1);
+        assertThat(dummyReg.checkPayment(p1, negative).result()).isEqualTo(ActionResult.INVALID_TOKENS_GIVEN);
+
+        // nothing changed
+        assertThat(p1.getTokens().get(TokenType.Red)).isEqualTo(5);
+        assertThat(p1.getTokens().get(TokenType.Gold)).isEqualTo(2);
+    }
+
+    @DisplayName("Ensure bonuses reduce the exact payment, so nothing is owed for a fully covered colour.")
+    @Test
+    public void testCheckPaymentWithBonuses() throws FileNotFoundException {
+        OrientGame game = GameUtils.createNewOrientGame(15, 4);
+        Player p1 = game.getPlayerFromName("Player1");
+        p1.addBonus(TokenType.Red, 3);
+
+        HashMap<TokenType, Integer> owned = new HashMap<>();
+        owned.put(TokenType.Red, 2);
+        p1.addTokens(owned);
+
+        HashMap<TokenType, Integer> one = new HashMap<>();
+        one.put(TokenType.Red, 1);
+        assertThat(dummyReg.checkPayment(p1, one).isValid()).isTrue();
+        assertThat(dummyReg.checkPayment(p1, owned).result()).isEqualTo(ActionResult.PAYMENT_TOO_HIGH);
+        assertThat(dummyReg.checkPayment(p1, new HashMap<>()).result()).isEqualTo(ActionResult.PAYMENT_TOO_LOW);
     }
 
 }

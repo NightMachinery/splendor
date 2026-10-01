@@ -157,7 +157,7 @@ public class TradingPostsTests {
         assertThat(ActionResult.TURN_COMPLETED).isIn(result);
     }
 
-    @DisplayName("Ensure you can buy a card regularly while having power 3 and using gold tokens")
+    @DisplayName("Ensure power 3 makes one gold token pay for two gems of the same colour")
     @Test
     void testPlayerHavingPower3UnlockedButNotUsingIt() throws FileNotFoundException {
         TradingPostsGame game = GameUtils.createNewTradingPostGame(15, 4);
@@ -174,10 +174,16 @@ public class TradingPostsTests {
 
         p1.addTokens(tokensToAdd);
 
-        ArrayList<ActionResult> result = game.takeAction(p1.getName(), new BuyCardAction("02", tokensToAdd));
+        // with power 3 a single gold pays for both missing red gems, so offering two is an overpayment
+        ArrayList<ActionResult> rejected = game.takeAction(p1.getName(), new BuyCardAction("02", tokensToAdd));
+        assertThat(ActionResult.PAYMENT_TOO_HIGH).isIn(rejected);
+
+        HashMap<TokenType, Integer> exact = new HashMap<>(tokensToAdd);
+        exact.put(TokenType.Gold, 1);
+        ArrayList<ActionResult> result = game.takeAction(p1.getName(), new BuyCardAction("02", exact));
 
         HashMap<TokenType, Integer> empty = new HashMap<>();
-        empty.put(TokenType.Gold, 0);
+        empty.put(TokenType.Gold, 1);
         empty.put(TokenType.Blue, 0);
         empty.put(TokenType.Brown, 0);
         empty.put(TokenType.Red, 0);
@@ -205,12 +211,13 @@ public class TradingPostsTests {
         p1.addBonus(TokenType.Green, 3);
 
 
-        HashMap<TokenType, Integer> tokensToUse = new HashMap<>();
-        tokensToUse.put(TokenType.Green, 1);
+        // the Green bonuses already cover card 05, so the exact payment is nothing
+        game.takeAction(p1.getName(), new BuyCardAction("05", new HashMap<>()));
 
-        game.takeAction(p1.getName(), new BuyCardAction("05", tokensToUse));
-
+        // only noble 99 qualifies, so it visits automatically and there is nothing to choose
+        assertThat(p1.getNobles().size()).isEqualTo(1);
         ArrayList<ActionResult> result = game.takeAction(p1.getName(), new ChooseNobleAction("99"));
+        assertThat(ActionResult.INVALID_PLAYER).isIn(result);
 
         // 8 because the power adds 5, the noble adds 3
         assertThat(p1.getPrestigePoints()).isEqualTo(8);
@@ -231,7 +238,7 @@ public class TradingPostsTests {
         NobleCard c1 = (NobleCard) game.getCardFromId("99");
         p1.addNoble(c1);
 
-        game.takeAction(p1.getName(), new BuyCardAction("05", tokensToAdd));
+        game.takeAction(p1.getName(), new BuyCardAction("05", new HashMap<>()));
 
 
         // 8 because the power adds 5, the noble adds 3
@@ -254,7 +261,7 @@ public class TradingPostsTests {
         NobleCard c1 = (NobleCard) game.getCardFromId("99");
         p1.addNoble(c1);
 
-        game.takeAction(p1.getName(), new BuyCardAction("05", tokensToAdd));
+        game.takeAction(p1.getName(), new BuyCardAction("05", new HashMap<>()));
 
 
         // 8 because power 4 adds 5, the noble adds 3, then power 5 adds 2 because there are 2 powers unlocked in total
@@ -300,21 +307,21 @@ public class TradingPostsTests {
         NobleCard c1 = (NobleCard) game.getCardFromId("99");
         p1.addNoble(c1);
 
-        // Unlocks power 4, adding 5PP to player
-        game.takeAction(p1.getName(), new BuyCardAction("05", tokensToUse));
+        // Unlocks power 4, adding 5PP to player (the Green bonuses cover the cost, so nothing is paid)
+        game.takeAction(p1.getName(), new BuyCardAction("05", new HashMap<>()));
 
         // Increment turn back to player 1
         game.takeAction(p2.getName(), new TakeTokenAction(tokensToUse, new HashMap<>()));
 
         // Unlocks power 2
-        game.takeAction(p1.getName(), new BuyCardAction("09", tokensToUse));
+        game.takeAction(p1.getName(), new BuyCardAction("09", new HashMap<>()));
 
         game.takeAction(p2.getName(), new TakeTokenAction(tokensToUse, new HashMap<>()));
 
         // Unlocks power 5
-        game.takeAction(p1.getName(), new BuyCardAction("08", tokensToUse));
+        game.takeAction(p1.getName(), new BuyCardAction("08", new HashMap<>()));
 
-        // 10 because 3 from noble, 5 from power 4 unlocked, 3 from power 5 unlocked and counting 3 powers
+        // 11 because 3 from noble, 5 from power 4 unlocked, 3 from power 5 unlocked and counting 3 powers
         assertThat(p1.getPrestigePoints()).isEqualTo(11);
     }
 

@@ -23,6 +23,15 @@ public abstract class Action {
     }
 
     /**
+     * Get the identifier of this action (which entry of the valid actions list it uses).
+     *
+     * @return action type
+     */
+    public Actions getActionType() {
+        return actionType;
+    }
+
+    /**
      * Executes an action on the specified game, performed by the specified player.
      *
      * @param game game to execute action on
@@ -32,7 +41,8 @@ public abstract class Action {
     public final List<ActionResult> execute(Game game, Player p) {
         ArrayList<ActionResult> result = new ArrayList<ActionResult>();
         // Check if player can execute this action.
-        if (!game.getTurnCurrentPlayer().getName().equals(p.getName())) {
+        Player current = game.getTurnCurrentPlayer();
+        if (current == null || p == null || !current.getName().equals(p.getName())) {
             result.add(ActionResult.INVALID_PLAYER);
             return result;
         }

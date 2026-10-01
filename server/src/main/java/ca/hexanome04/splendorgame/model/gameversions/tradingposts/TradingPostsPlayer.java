@@ -8,6 +8,11 @@ import ca.hexanome04.splendorgame.model.gameversions.orient.*;
  */
 public class TradingPostsPlayer extends OrientPlayer {
 
+    /**
+     * Number of coats of arms each player starts with (one per power).
+     */
+    public static final int COATS_OF_ARMS = 5;
+
     private int coatsOfArmsUnplaced;
     /**
      * The power which take extra token after purchase.
@@ -39,7 +44,7 @@ public class TradingPostsPlayer extends OrientPlayer {
     public TradingPostsPlayer(String name, String colour) {
         super(name, colour);
 
-        this.coatsOfArmsUnplaced = 5;
+        this.coatsOfArmsUnplaced = COATS_OF_ARMS;
         this.extraTokenAfterPurchase = new ExtraTokenAfterPurchasePower();
         this.extraTokenAfterTakingSameColor = new ExtraTokenAfterTakingSameColorTokensPower();
         this.goldTokenWorthTwoTokens = new GoldTokenWorthTwoTokensPower();

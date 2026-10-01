@@ -6,15 +6,15 @@ import ca.hexanome04.splendorgame.model.*;
 import ca.hexanome04.splendorgame.model.action.Action;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
-import ca.hexanome04.splendorgame.model.action.actions.ChooseNobleAction;
 import ca.hexanome04.splendorgame.model.gameversions.*;
-import ca.hexanome04.splendorgame.model.gameversions.cities.CitiesGame;
 import java.io.*;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.ResourceUtils;
@@ -22,8 +22,19 @@ import org.springframework.util.ResourceUtils;
 
 /**
  * Class that represents the current state of a base game + orient game.
+ *
+ * <p>A turn is one main action (BUY_CARD, TAKE_TOKEN or RESERVE_CARD) followed by the follow-up actions it causes
+ * (cascades, satchel colour, reserving a noble, Trading Posts extra token). Once no follow-up is left, the end of
+ * turn checks run: at most one noble visit, then expansion specific checks (Trading Posts powers, Cities), then the
+ * player is recorded as a potential winner if they reached the target. When the last player of the round finishes
+ * and someone reached the target, the game ends, so every player has had the same number of turns.</p>
  */
 public class OrientGame implements Game {
+
+    /**
+     * Value of the turn counter once the game is over (kept for compatibility with existing clients).
+     */
+    public static final int GAME_OVER_TURN_COUNTER = -10000;
 
     private static final String cardsFilename = "classpath:cards.csv";
 
@@ -51,6 +62,15 @@ public class OrientGame implements Game {
     private List<Player> playersWhoCanWin = new ArrayList<>();
     private List<Player> winners = new ArrayList<>();
     private boolean gameOver = false;
+
+    /** Whether the current player already received a noble this turn (official rule: at most one per turn). */
+    private boolean nobleVisitedThisTurn = false;
+
+    /** Source of randomness for shuffling (null means unseeded); never saved or sent to clients. */
+    private transient Random shuffleRandom;
+
+    /** Card file to load (null means the default classpath resource); never saved or sent to clients. */
+    private transient String cardsResource;
 
 
     /**
@@ -81,115 +101,162 @@ public class OrientGame implements Game {
     }
 
     /**
+     * Use a specific card file instead of the default {@code classpath:cards.csv} (for tests and tools).
+     * Must be called before {@link #createSplendorBoard()}.
+     *
+     * @param resource Spring resource location, such as {@code classpath:cards.csv} or {@code file:/path/cards.csv}
+     */
+    public void setCardsResource(String resource) {
+        this.cardsResource = resource;
+    }
+
+    /**
+     * Read a card file line by line, skipping the header and blank lines.
+     *
+     * @param resource Spring resource location
+     * @return the data lines split on commas
+     */
+    protected static List<String[]> readCardFile(String resource) {
+        List<String[]> rows = new ArrayList<>();
+        try (InputStream inputStream = ResourceUtils.getURL(resource).openStream();
+             BufferedReader br = new BufferedReader(new InputStreamReader(inputStream, Charset.defaultCharset()))) {
+            String line = br.readLine(); // header
+            while ((line = br.readLine()) != null) {
+                if (!line.isBlank()) {
+                    rows.add(line.split(","));
+                }
+            }
+        } catch (IOException e) {
+            logger.error("Could not read card file {}", resource, e);
+            throw new IllegalStateException("Could not read card file " + resource, e);
+        }
+        return rows;
+    }
+
+    /**
      * Constructor for the splendorBoard, initializes all the decks with cards from a file.
      */
     @Override
     public void createSplendorBoard() {
-
-        String line = "";
-
         nobleDeck = new Deck<>();
         tier1OrientDeck = new Deck<>();
         tier2OrientDeck = new Deck<>();
         tier3OrientDeck = new Deck<>();
 
-        try (InputStream inputStream = ResourceUtils.getURL(cardsFilename).openStream();
-             BufferedReader br = new BufferedReader(new InputStreamReader(inputStream, Charset.defaultCharset()))) {
-            TokenType[] types = {White, Blue, Green, Red, Brown};
-            int lines = 1;
-            while ((line = br.readLine()) != null) {
-                if (lines == 1) {
-                    // skip first line (headers)
-                    lines++;
-                    continue;
-                }
-
-                String[] card = line.split(",");
-                String[] cost = card[4].split(";");
-                HashMap<TokenType, Integer> tokenCost = new HashMap<>();
-                for (TokenType tokenType : TokenType.values()) {
-                    tokenCost.put(tokenType, 0);
-                }
-
-                for (int i = 0; i < 5; i++) {
-                    if (!cost[i].equals("0")) {
-                        tokenCost.put(types[i], Integer.parseInt(cost[i]));
-                    }
-                }
-
-                int prestigePoints = Integer.parseInt(card[2]);
-                TokenType tokenType = null;
-                boolean isSatchel = false;
-                int bonusCount = Integer.parseInt(card[1]);
-                CostType costType = Enum.valueOf(CostType.class, card[3]);
-                if (!card[0].isBlank()) {
-                    tokenType = Enum.valueOf(TokenType.class, card[0]);
-                }
-
-                String cardId = card[6];
-
-                if (tokenType == Satchel) {
-                    isSatchel = true;
-                }
-
-                switch (card[5]) {
-                    case "1" -> tier1Deck.add(new RegDevelopmentCard(CardTier.TIER_1, tokenType, bonusCount,
-                            prestigePoints, costType, tokenCost, cardId));
-
-                    case "2" -> tier2Deck.add(new RegDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
-                            prestigePoints, costType, tokenCost, cardId));
-
-                    case "3" -> tier3Deck.add(new RegDevelopmentCard(CardTier.TIER_3, tokenType, bonusCount,
-                            prestigePoints, costType, tokenCost, cardId));
-
-                    case "N" -> nobleDeck.add(new NobleCard(prestigePoints, costType, tokenCost, cardId));
-
-                    case "O1" -> tier1OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_1, tokenType, bonusCount,
-                            CascadeType.None, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
-
-                    case "O2" -> {
-                        if (!card[7].isBlank()) {
-                            tier2OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
-                                    CascadeType.Tier1, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
-                        } else if (!card[8].isBlank()) {
-                            tier2OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
-                                    CascadeType.None, true, prestigePoints, costType, tokenCost, cardId, isSatchel));
-                        } else {
-                            tier2OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
-                                    CascadeType.None, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
-                        }
-                    }
-
-                    case "O3" -> {
-                        if (!card[7].isBlank()) {
-                            tier3OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_3, tokenType, bonusCount,
-                                    CascadeType.Tier2, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
-                        } else {
-                            tier3OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_3, tokenType, bonusCount,
-                                    CascadeType.None, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
-                        }
-                    }
-
-                    default -> throw new Exception("File not in proper format");
-                }
-
-                lines++;
+        String resource = cardsResource == null ? cardsFilename : cardsResource;
+        TokenType[] types = {White, Blue, Green, Red, Brown};
+        for (String[] card : readCardFile(resource)) {
+            try {
+                addCardFromRow(card, types);
+            } catch (RuntimeException e) {
+                logger.error("Malformed card line in {}: {}", resource, String.join(",", card), e);
+                throw new IllegalStateException("Malformed card line in " + resource + ": " + String.join(",", card), e);
             }
-        } catch (Exception e) {
-            logger.error("Could not read file"); // Testing
         }
+    }
+
+    private void addCardFromRow(String[] card, TokenType[] types) {
+        String[] cost = card[4].split(";");
+        HashMap<TokenType, Integer> tokenCost = new HashMap<>();
+        for (TokenType tokenType : TokenType.values()) {
+            tokenCost.put(tokenType, 0);
+        }
+
+        for (int i = 0; i < 5; i++) {
+            if (!cost[i].equals("0")) {
+                tokenCost.put(types[i], Integer.parseInt(cost[i]));
+            }
+        }
+
+        int prestigePoints = Integer.parseInt(card[2]);
+        TokenType tokenType = null;
+        int bonusCount = Integer.parseInt(card[1]);
+        CostType costType = Enum.valueOf(CostType.class, card[3]);
+        if (!card[0].isBlank()) {
+            tokenType = Enum.valueOf(TokenType.class, card[0]);
+        }
+
+        String cardId = card[6];
+        boolean isSatchel = tokenType == Satchel;
+        boolean hasCascade = card.length > 7 && !card[7].isBlank();
+        boolean hasReserveNoble = card.length > 8 && !card[8].isBlank();
+
+        switch (card[5]) {
+            case "1" -> tier1Deck.add(new RegDevelopmentCard(CardTier.TIER_1, tokenType, bonusCount,
+                    prestigePoints, costType, tokenCost, cardId));
+
+            case "2" -> tier2Deck.add(new RegDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
+                    prestigePoints, costType, tokenCost, cardId));
+
+            case "3" -> tier3Deck.add(new RegDevelopmentCard(CardTier.TIER_3, tokenType, bonusCount,
+                    prestigePoints, costType, tokenCost, cardId));
+
+            case "N" -> nobleDeck.add(new NobleCard(prestigePoints, costType, tokenCost, cardId));
+
+            case "O1" -> tier1OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_1, tokenType, bonusCount,
+                    CascadeType.None, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
+
+            case "O2" -> {
+                if (hasCascade) {
+                    tier2OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
+                            CascadeType.Tier1, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
+                } else if (hasReserveNoble) {
+                    tier2OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
+                            CascadeType.None, true, prestigePoints, costType, tokenCost, cardId, isSatchel));
+                } else {
+                    tier2OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_2, tokenType, bonusCount,
+                            CascadeType.None, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
+                }
+            }
+
+            case "O3" -> {
+                // the real card file has no tier 3 reserve-noble card, but the format allows one
+                if (hasCascade) {
+                    tier3OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_3, tokenType, bonusCount,
+                            CascadeType.Tier2, false, prestigePoints, costType, tokenCost, cardId, isSatchel));
+                } else {
+                    tier3OrientDeck.add(new OrientDevelopmentCard(CardTier.TIER_3, tokenType, bonusCount,
+                            CascadeType.None, hasReserveNoble, prestigePoints, costType, tokenCost, cardId, isSatchel));
+                }
+            }
+
+            default -> throw new IllegalArgumentException("Unknown card row type '" + card[5] + "'");
+        }
+    }
+
+    /**
+     * Whether nobles are dealt at the start of this game version.
+     *
+     * @return true if players + 1 nobles are dealt
+     */
+    protected boolean dealsNobles() {
+        return true;
+    }
+
+    /**
+     * Source of randomness used for shuffling (null when unseeded).
+     *
+     * @return random source or null
+     */
+    protected Random getShuffleRandom() {
+        return shuffleRandom;
+    }
+
+    @Override
+    public void setShuffleRandom(Random random) {
+        this.shuffleRandom = random;
     }
 
     /**
      * Initialize state of the board (cards, nobles, tokens).
      */
     public void initBoard() {
-        tier1Deck.shuffle();
-        tier2Deck.shuffle();
-        tier3Deck.shuffle();
-        tier1OrientDeck.shuffle();
-        tier2OrientDeck.shuffle();
-        tier3OrientDeck.shuffle();
+        tier1Deck.shuffle(shuffleRandom);
+        tier2Deck.shuffle(shuffleRandom);
+        tier3Deck.shuffle(shuffleRandom);
+        tier1OrientDeck.shuffle(shuffleRandom);
+        tier2OrientDeck.shuffle(shuffleRandom);
+        tier3OrientDeck.shuffle(shuffleRandom);
 
         tier1Deck.drawCards(4);
         tier2Deck.drawCards(4);
@@ -198,8 +265,10 @@ public class OrientGame implements Game {
         tier2OrientDeck.drawCards(2);
         tier3OrientDeck.drawCards(2);
 
-        nobleDeck.shuffle();
-        nobleDeck.drawCards(players.size() + 1);
+        nobleDeck.shuffle(shuffleRandom);
+        if (dealsNobles()) {
+            nobleDeck.drawCards(players.size() + 1);
+        }
 
         // Now initialize tokens
         int numTokens;
@@ -230,49 +299,16 @@ public class OrientGame implements Game {
      */
     public Card getCardFromId(String id) {
         // look through all the decks
+        List<Deck<? extends Card>> decks = List.of(tier1Deck, tier2Deck, tier3Deck,
+                tier1OrientDeck, tier2OrientDeck, tier3OrientDeck, nobleDeck);
         Card card = null;
-        for (Card c : this.tier1Deck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
+        for (Deck<? extends Card> deck : decks) {
+            for (Card c : deck.getVisibleCards()) {
+                if (c.getId().equals(id)) {
+                    card = c;
+                }
             }
         }
-
-        for (Card c : this.tier2Deck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
-            }
-        }
-
-        for (Card c : this.tier3Deck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
-            }
-        }
-
-        for (Card c : this.tier1OrientDeck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
-            }
-        }
-
-        for (Card c : this.tier2OrientDeck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
-            }
-        }
-
-        for (Card c : this.tier3OrientDeck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
-            }
-        }
-
-        for (Card c : this.nobleDeck.getVisibleCards()) {
-            if (c.getId().equals(id)) {
-                card = c;
-            }
-        }
-
         return card;
     }
 
@@ -347,79 +383,279 @@ public class OrientGame implements Game {
     }
 
     /**
+     * Give a noble to a player: from the board, or from the player's reserved nobles.
+     * Counts as this turn's noble visit.
+     *
+     * @param player player receiving the noble
+     * @param noble noble being given
+     */
+    public void grantNoble(Player player, NobleCard noble) {
+        if (player.getReservedNobles().contains(noble)) {
+            player.removeReservedNoble(noble);
+        } else {
+            takeCard(noble);
+        }
+        player.addNoble(noble);
+        nobleVisitedThisTurn = true;
+    }
+
+    /**
+     * Whether a player owns a development card with a gem bonus (needed before a Satchel card can be taken).
+     *
+     * @param player player to check
+     * @return true if the player owns a card whose bonus is a gem colour
+     */
+    public static boolean ownsGemBonusCard(Player player) {
+        for (DevelopmentCard c : player.getDevCards()) {
+            if (c.getTokenType() != null && c.getTokenType().isGem()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Cards a player may take for free with a cascade of the given tier: the visible cards of that tier,
+     * from the regular and the Orient rows, except Satchel cards when the player has no gem bonus card yet.
+     *
+     * @param player player cascading
+     * @param tier tier of card to take
+     * @return cards that may be chosen
+     */
+    public List<DevelopmentCard> getCascadeChoices(Player player, CardTier tier) {
+        List<DevelopmentCard> choices = new ArrayList<>();
+        switch (tier) {
+            case TIER_1 -> {
+                choices.addAll(tier1Deck.getVisibleCards());
+                choices.addAll(tier1OrientDeck.getVisibleCards());
+            }
+            case TIER_2 -> {
+                choices.addAll(tier2Deck.getVisibleCards());
+                choices.addAll(tier2OrientDeck.getVisibleCards());
+            }
+            default -> {
+                // no cascade takes a tier 3 card
+            }
+        }
+        if (!ownsGemBonusCard(player)) {
+            choices.removeIf(c -> c.getTokenType() == Satchel);
+        }
+        return choices;
+    }
+
+    /**
+     * Follow-up actions caused by acquiring a development card (by buying it or through a cascade).
+     * A follow-up is only requested when it can actually be carried out, so that no turn gets stuck.
+     *
+     * @param player player acquiring the card
+     * @param card card acquired
+     * @return MUST_* results describing the follow-ups
+     */
+    public List<ActionResult> followUpsForAcquiredCard(Player player, DevelopmentCard card) {
+        List<ActionResult> followUps = new ArrayList<>();
+        if (!(card instanceof OrientDevelopmentCard orientCard)) {
+            return followUps;
+        }
+        if (orientCard.getReserveNoble() && !getNobles().isEmpty()) {
+            followUps.add(ActionResult.MUST_RESERVE_NOBLE);
+        }
+        if (orientCard.getCascadeType() == CascadeType.Tier1 && !getCascadeChoices(player, CardTier.TIER_1).isEmpty()) {
+            followUps.add(ActionResult.MUST_CHOOSE_CASCADE_CARD_TIER_1);
+        } else if (orientCard.getCascadeType() == CascadeType.Tier2
+                && !getCascadeChoices(player, CardTier.TIER_2).isEmpty()) {
+            followUps.add(ActionResult.MUST_CHOOSE_CASCADE_CARD_TIER_2);
+        }
+        if (orientCard.getTokenType() == Satchel) {
+            followUps.add(ActionResult.MUST_CHOOSE_TOKEN_TYPE);
+        }
+        return followUps;
+    }
+
+    /**
+     * Whether a player still has a Satchel card whose colour has not been chosen.
+     *
+     * @param player player to check
+     * @return true if a Satchel colour is still to be chosen
+     */
+    public static boolean hasUnassignedSatchel(Player player) {
+        for (DevelopmentCard c : player.getDevCards()) {
+            if (c.getTokenType() == Satchel) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Allows player to perform an action.
      *
      * @param playerName player performing action
      * @param action     action being executed
      * @return result of action execution
      */
+    @Override
     public ArrayList<ActionResult> takeAction(String playerName, Action action) {
 
         ArrayList<ActionResult> results = new ArrayList<>();
 
-        if (players.indexOf(this.getPlayerFromName(playerName)) != this.turnCounter) {
-            results.add(ActionResult.INVALID_PLAYER);
+        if (gameOver) {
+            results.add(ActionResult.GAME_OVER);
             return results;
         }
 
         Player p = this.getPlayerFromName(playerName);
-
-        List<ActionResult> ar = action.execute(this, p);
-        results.addAll(ar);
-
-        // Check if player qualifies for noble card at end of turn
-        ArrayList<NobleCard> nobleCards = qualifiesForNoble(p);
-        if (nobleCards.size() != 0 && results.contains(ActionResult.TURN_COMPLETED)) {
-            // only when player did not do choose noble
-            if (nobleCards.size() == 1 && !(action instanceof ChooseNobleAction)) {
-                NobleCard noble = nobleCards.get(0);
-                takeCard(noble);
-                p.addNoble(noble);
-
-                if (p.getReservedNobles().contains(noble)) {
-                    p.removeReservedNoble(noble);
-                }
-            } else if (!(action instanceof ChooseNobleAction)) {
-                // only make player choose noble if they didn't just choose one
-                results.add(ActionResult.MUST_CHOOSE_NOBLE);
-            }
+        if (p == null || players.indexOf(p) != this.turnCounter) {
+            results.add(ActionResult.INVALID_PLAYER);
+            return results;
         }
 
-
-        // check for winners
-        if (!results.contains(ActionResult.MUST_CHOOSE_CITY) && canPlayerWin(p) && !playersWhoCanWin.contains(p)) {
-            addPlayersWhoCanWin(p);
-            if (this instanceof CitiesGame) {
-                results = ((CitiesGame) this).addCityToPlayer(playerName, results);
-            }
+        if (action == null || !curValidActions.contains(action.getActionType())) {
+            results.add(ActionResult.ACTION_NOT_ALLOWED);
+            return results;
         }
 
-        if (results.contains(ActionResult.TURN_COMPLETED) && results.contains(ActionResult.VALID_ACTION)
-                && results.size() == 2 && this.getCurValidActions().size() == 0) {
-            if (checkForWin() != null) {
-                winners = checkForWin();
-                turnCounter = -10000;
-                curValidActions.clear();
-            } else {
-                // increment action also resets current valid actions list
-                this.incrementTurn();
-            }
-        } else {
+        results.addAll(action.execute(this, p));
+        if (!results.contains(ActionResult.VALID_ACTION)) {
+            // rejected: actions check everything before changing state, so nothing changed
+            return results;
+        }
 
-            for (ActionResult ares : results) {
-                switch (ares) {
-                    case MUST_CHOOSE_NOBLE -> this.addValidAction(Actions.CHOOSE_NOBLE);
-                    case MUST_CHOOSE_CASCADE_CARD_TIER_1 -> this.addValidAction(Actions.CASCADE_1);
-                    case MUST_CHOOSE_CASCADE_CARD_TIER_2 -> this.addValidAction(Actions.CASCADE_2);
-                    case MUST_CHOOSE_TOKEN_TYPE -> this.addValidAction(Actions.CHOOSE_SATCHEL_TOKEN);
-                    case MUST_RESERVE_NOBLE -> this.addValidAction(Actions.RESERVE_NOBLE);
-                    default -> {
-                        continue;
-                    }
-                }
+        for (ActionResult result : results) {
+            Actions followUp = followUpFor(result);
+            if (followUp != null) {
+                addValidAction(followUp);
             }
         }
+        removeImpossibleFollowUps(p);
+
+        if (curValidActions.isEmpty()) {
+            endOfTurnChecks(p, results);
+        }
+
+        if (curValidActions.isEmpty()) {
+            finishTurn();
+        }
+
         return results;
+    }
+
+    private static Actions followUpFor(ActionResult result) {
+        return switch (result) {
+            case MUST_CHOOSE_CASCADE_CARD_TIER_1 -> Actions.CASCADE_1;
+            case MUST_CHOOSE_CASCADE_CARD_TIER_2 -> Actions.CASCADE_2;
+            case MUST_CHOOSE_TOKEN_TYPE -> Actions.CHOOSE_SATCHEL_TOKEN;
+            case MUST_RESERVE_NOBLE -> Actions.RESERVE_NOBLE;
+            case MUST_TAKE_EXTRA_TOKEN_AFTER_PURCHASE -> Actions.TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER;
+            default -> null;
+        };
+    }
+
+    /**
+     * Safety net against stuck turns: drop follow-ups that can no longer be carried out.
+     *
+     * @param player current player
+     */
+    protected void removeImpossibleFollowUps(Player player) {
+        if (curValidActions.contains(Actions.RESERVE_NOBLE) && getNobles().isEmpty()) {
+            curValidActions.remove(Actions.RESERVE_NOBLE);
+        }
+        if (curValidActions.contains(Actions.CASCADE_1) && getCascadeChoices(player, CardTier.TIER_1).isEmpty()) {
+            curValidActions.remove(Actions.CASCADE_1);
+        }
+        if (curValidActions.contains(Actions.CASCADE_2) && getCascadeChoices(player, CardTier.TIER_2).isEmpty()) {
+            curValidActions.remove(Actions.CASCADE_2);
+        }
+        if (curValidActions.contains(Actions.CHOOSE_SATCHEL_TOKEN)
+                && (!hasUnassignedSatchel(player) || !ownsGemBonusCard(player))) {
+            curValidActions.remove(Actions.CHOOSE_SATCHEL_TOKEN);
+        }
+        if (curValidActions.contains(Actions.CHOOSE_NOBLE) && qualifiesForNoble(player).isEmpty()) {
+            curValidActions.remove(Actions.CHOOSE_NOBLE);
+        }
+    }
+
+    /**
+     * Checks run once the current player has no follow-up action left: at most one noble visit per turn,
+     * then expansion specific checks, then recording the player as a potential winner.
+     * May add a choice (CHOOSE_NOBLE, CHOOSE_CITY) that the player has to make before the turn ends.
+     *
+     * @param player current player
+     * @param results results of the action, MUST_* results for new choices are appended
+     */
+    protected void endOfTurnChecks(Player player, List<ActionResult> results) {
+        if (!nobleVisitedThisTurn) {
+            List<NobleCard> nobles = qualifiesForNoble(player);
+            if (nobles.size() == 1) {
+                grantNoble(player, nobles.get(0));
+            } else if (nobles.size() > 1) {
+                addValidAction(Actions.CHOOSE_NOBLE);
+                results.add(ActionResult.MUST_CHOOSE_NOBLE);
+                return;
+            }
+        }
+
+        expansionEndOfTurnChecks(player, results);
+
+        if (curValidActions.isEmpty() && canPlayerWin(player) && !playersWhoCanWin.contains(player)) {
+            addPlayersWhoCanWin(player);
+        }
+    }
+
+    /**
+     * Expansion specific end of turn checks (Trading Posts powers, Cities). Runs after the noble visit.
+     *
+     * @param player current player
+     * @param results results of the action, MUST_* results for new choices are appended
+     */
+    protected void expansionEndOfTurnChecks(Player player, List<ActionResult> results) {
+        // nothing for the base game + Orient
+    }
+
+    /**
+     * End the current player's turn: end the game if the round is over and someone reached the target,
+     * otherwise pass the turn to the next player.
+     */
+    private void finishTurn() {
+        List<Player> roundWinners = checkForWin();
+        if (roundWinners != null) {
+            winners = new ArrayList<>(roundWinners);
+            gameOver = true;
+            turnCounter = GAME_OVER_TURN_COUNTER;
+            curValidActions.clear();
+        } else {
+            this.incrementTurn();
+        }
+    }
+
+    /**
+     * Whether the current player is the last one in the round (so all players have had the same number of turns
+     * once they finish).
+     *
+     * @return true if the current seat is the last seat
+     */
+    public boolean isLastTurnOfRound() {
+        return turnCounter == players.size() - 1;
+    }
+
+    /**
+     * Pick the winners among players who reached the end condition: the most prestige points win, ties are broken
+     * by the fewest development cards, and players still tied share the victory.
+     *
+     * @param candidates players who reached the end condition
+     * @return winners, in seat order
+     */
+    protected List<Player> determineWinners(List<Player> candidates) {
+        int mostPoints = candidates.stream().mapToInt(Player::getPrestigePoints).max().orElse(0);
+        int fewestCards = candidates.stream().filter(p -> p.getPrestigePoints() == mostPoints)
+                .mapToInt(p -> p.getDevCards().size()).min().orElse(0);
+        List<Player> result = new ArrayList<>();
+        for (Player p : candidates) {
+            if (p.getPrestigePoints() == mostPoints && p.getDevCards().size() == fewestCards) {
+                result.add(p);
+            }
+        }
+        result.sort(Comparator.comparingInt(players::indexOf));
+        return result;
     }
 
     /**
@@ -465,6 +701,33 @@ public class OrientGame implements Game {
         return this.tier2OrientDeck.getVisibleCards();
     }
 
+    /**
+     * Get the current two visible tier 3 orient cards.
+     *
+     * @return list of visible tier 3 orient cards
+     */
+    public List<OrientDevelopmentCard> getTier3PurchasableOrientCards() {
+        return this.tier3OrientDeck.getVisibleCards();
+    }
+
+    /**
+     * All development card decks of the board (regular tiers 1 to 3, then Orient tiers 1 to 3).
+     *
+     * @return the six development card decks
+     */
+    public List<Deck<? extends DevelopmentCard>> getDevelopmentDecks() {
+        return List.of(tier1Deck, tier2Deck, tier3Deck, tier1OrientDeck, tier2OrientDeck, tier3OrientDeck);
+    }
+
+    /**
+     * The noble deck of the board.
+     *
+     * @return noble deck
+     */
+    public Deck<NobleCard> getNobleDeck() {
+        return nobleDeck;
+    }
+
     @Override
     public Player createPlayer(String name, String colour) {
         return new OrientPlayer(name, colour);
@@ -484,16 +747,15 @@ public class OrientGame implements Game {
 
     @Override
     public boolean removeTokens(Map<TokenType, Integer> tokensToRemove) {
-
-        // TODO: Check first, technically this could remove some tokens before returning false.
+        // check everything first, so that a failed removal changes nothing
         for (Map.Entry<TokenType, Integer> entry : tokensToRemove.entrySet()) {
-            int tokensLeft = tokens.get(entry.getKey()) - entry.getValue();
-
-            // check for taking too many tokens
-            if (tokensLeft < 0) {
+            int available = tokens.getOrDefault(entry.getKey(), 0);
+            if (entry.getValue() < 0 || available - entry.getValue() < 0) {
                 return false;
             }
-            this.tokens.put(entry.getKey(), tokensLeft);
+        }
+        for (Map.Entry<TokenType, Integer> entry : tokensToRemove.entrySet()) {
+            this.tokens.put(entry.getKey(), tokens.getOrDefault(entry.getKey(), 0) - entry.getValue());
         }
         return true;
     }
@@ -517,12 +779,16 @@ public class OrientGame implements Game {
         curValidActions.add(Actions.BUY_CARD);
         curValidActions.add(Actions.TAKE_TOKEN);
         curValidActions.add(Actions.RESERVE_CARD);
+        nobleVisitedThisTurn = false;
 
         return players.get(turnCounter);
     }
 
     @Override
     public Player getTurnCurrentPlayer() {
+        if (gameOver || turnCounter < 0 || turnCounter >= players.size()) {
+            return null;
+        }
         return players.get(turnCounter);
     }
 
@@ -565,9 +831,21 @@ public class OrientGame implements Game {
         return this.gameVersion;
     }
 
+    /**
+     * Number of prestige points needed to end the game (not used by the Cities versions).
+     *
+     * @return target prestige points
+     */
+    public int getPrestigePointsToWin() {
+        return prestigePointsToWin;
+    }
+
     @Override
     public void addValidAction(Actions action) {
-        curValidActions.add(action);
+        // each kind of follow-up is listed once: listing it twice could leave a turn stuck
+        if (!curValidActions.contains(action)) {
+            curValidActions.add(action);
+        }
     }
 
     @Override
@@ -587,30 +865,27 @@ public class OrientGame implements Game {
         curValidActions.remove(Actions.RESERVE_CARD);
     }
 
+    /**
+     * Winners if the game ends now: only at the end of a round (the last seat just finished its turn), and only if
+     * at least one player reached the end condition. Does not change the game state.
+     *
+     * @return winners, or null if the game goes on
+     */
     @Override
     public List<Player> checkForWin() {
-        if (playersWhoCanWin.size() > 0 && turnCounter != 0 && turnCounter % (players.size() - 1) == 0) {
-            List<Player> tmpWinners = new ArrayList<>(winners);
-            tmpWinners.add(playersWhoCanWin.get(0));
-
-            for (Player p : playersWhoCanWin) {
-                Player currentWinner = tmpWinners.get(0);
-                if (p.getDevCards().size() < currentWinner.getDevCards().size()) {
-                    tmpWinners.clear();
-                    tmpWinners.add(p);
-                } else if (p != currentWinner && p.getDevCards().size() == currentWinner.getDevCards().size()) {
-                    if (!tmpWinners.contains(currentWinner)) {
-                        tmpWinners.add(currentWinner);
-                    }
-                    if (!tmpWinners.contains(p)) {
-                        tmpWinners.add(p);
-                    }
-                }
-            }
-            gameOver = true;
-            return tmpWinners;
+        if (!isLastTurnOfRound()) {
+            return null;
         }
-        return null;
+        List<Player> candidates = new ArrayList<>();
+        for (Player p : players) {
+            if (canPlayerWin(p)) {
+                candidates.add(p);
+            }
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return determineWinners(candidates);
     }
 
     @Override

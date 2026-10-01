@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 
 /**
@@ -26,6 +27,14 @@ public interface Game {
      * Initialize state of the board (cards, nobles, tokens).
      */
     void initBoard();
+
+    /**
+     * Use a specific source of randomness when the board is shuffled (call before {@link #initBoard()}).
+     * Tests use it to make games reproducible; null means an unseeded shuffle.
+     *
+     * @param random source of randomness, or null
+     */
+    void setShuffleRandom(Random random);
 
     /**
      * Get the current four visible tier 1 cards.
@@ -111,7 +120,7 @@ public interface Game {
     /**
      * Get the player whose turn it is.
      *
-     * @return player who has to play
+     * @return player who has to play, or null once the game is over
      */
     Player getTurnCurrentPlayer();
 
@@ -203,9 +212,9 @@ public interface Game {
     Player createPlayer(String name, String colour);
 
     /**
-     * Check for winner(s) at the end of each round.
+     * Check for winner(s) at the end of each round, without changing the game state.
      *
-     * @return Player who is a winner (null if there are no winners at this moment)
+     * @return winners if the game ends now (null if the game goes on)
      */
     List<Player> checkForWin();
 

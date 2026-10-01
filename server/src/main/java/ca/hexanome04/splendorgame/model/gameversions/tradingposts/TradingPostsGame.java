@@ -1,12 +1,9 @@
 package ca.hexanome04.splendorgame.model.gameversions.tradingposts;
 
 import ca.hexanome04.splendorgame.model.*;
-import ca.hexanome04.splendorgame.model.action.Action;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
-import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.GameVersions;
 import ca.hexanome04.splendorgame.model.gameversions.orient.*;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -25,19 +22,16 @@ public class TradingPostsGame extends OrientGame {
     }
 
     /**
-     * Allows player to perform an action.
+     * Unlock the powers the player now qualifies for. Runs at the end of the turn, after the noble visit
+     * (power 4 needs a noble) and before the win check, so points gained from powers count this turn.
      *
-     * @param playerName player performing action
-     * @param action     action being executed
-     * @return result of action execution
+     * @param player current player
+     * @param results results of the action (unchanged: powers never need a choice)
      */
     @Override
-    public ArrayList<ActionResult> takeAction(String playerName, Action action) {
-        final ArrayList<ActionResult> results = super.takeAction(playerName, action);
+    protected void expansionEndOfTurnChecks(Player player, List<ActionResult> results) {
+        TradingPostsPlayer p = (TradingPostsPlayer) player;
 
-        TradingPostsPlayer p = (TradingPostsPlayer) this.getPlayerFromName(playerName);
-
-        // Check if player qualifies for Powers at the end of each turn
         // Power 1
         if (!p.extraTokenAfterPurchase.isUnlocked() && p.extraTokenAfterPurchase.conditionMet(p)) {
             p.extraTokenAfterPurchase.unlockPower(p);
@@ -63,12 +57,6 @@ public class TradingPostsGame extends OrientGame {
         if (!p.addPrestigePointsWithCoatsOfArms.isUnlocked() && p.addPrestigePointsWithCoatsOfArms.conditionMet(p)) {
             p.addPrestigePointsWithCoatsOfArms.unlockPower(p);
         }
-
-        if (results.contains(ActionResult.MUST_TAKE_EXTRA_TOKEN_AFTER_PURCHASE)) {
-            this.addValidAction(Actions.TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER);
-        }
-
-        return results;
     }
 
     /**

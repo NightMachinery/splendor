@@ -38,5 +38,14 @@ public enum TokenType {
     /**
      * Gold token.
      */
-    Gold
+    Gold;
+
+    /**
+     * Whether this is one of the five gem colours, as opposed to Gold or the Satchel placeholder.
+     *
+     * @return true for Green, White, Blue, Brown and Red
+     */
+    public boolean isGem() {
+        return this != Satchel && this != Gold;
+    }
 }

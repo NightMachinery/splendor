@@ -41,11 +41,12 @@ public class AddPrestigePointsWithCoatsOfArmsPower extends Power {
      */
     @Override
     public void execute(TradingPostsPlayer player) {
-        // amount of coat of arms in the hand of the player
-        int coatsOfArmsInHand = player.getCoatsOfArmsUnplaced();
-        if (currentAddedPoints < 5) {
-            player.addPrestigePoints(5 - coatsOfArmsInHand - currentAddedPoints);
-            currentAddedPoints = 5 - coatsOfArmsInHand - currentAddedPoints;
+        // the power is worth 1 point per coat of arms on the board, including its own;
+        // only the points not given out yet are added
+        int coatsOfArmsPlaced = TradingPostsPlayer.COATS_OF_ARMS - player.getCoatsOfArmsUnplaced();
+        if (coatsOfArmsPlaced > currentAddedPoints) {
+            player.addPrestigePoints(coatsOfArmsPlaced - currentAddedPoints);
+            currentAddedPoints = coatsOfArmsPlaced;
         }
     }
 }

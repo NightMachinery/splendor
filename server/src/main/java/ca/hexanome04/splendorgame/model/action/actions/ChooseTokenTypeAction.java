@@ -6,9 +6,11 @@ import ca.hexanome04.splendorgame.model.Player;
 import ca.hexanome04.splendorgame.model.SplendorException;
 import ca.hexanome04.splendorgame.model.TokenType;
 import ca.hexanome04.splendorgame.model.action.Action;
+import ca.hexanome04.splendorgame.model.action.ActionJson;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
+import ca.hexanome04.splendorgame.model.gameversions.orient.OrientGame;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +59,11 @@ public class ChooseTokenTypeAction extends Action {
             throw new SplendorException("Card with id '" + this.cardId + "' is not of type Satchel.");
         }
 
+        if (this.assignedTokenType == null || !this.assignedTokenType.isGem()) {
+            result.add(ActionResult.INVALID_TOKEN_CHOSEN);
+            return result;
+        }
+
         // player can only set satchel token type to another bonus they already have
         boolean valid = false;
         for (DevelopmentCard c : p.getDevCards()) {
@@ -82,7 +89,10 @@ public class ChooseTokenTypeAction extends Action {
             result.add(ActionResult.VALID_ACTION);
         }
 
-        game.removeValidAction(Actions.CHOOSE_SATCHEL_TOKEN);
+        // a second satchel taken in the same turn (through a cascade) still needs its colour
+        if (!OrientGame.hasUnassignedSatchel(p)) {
+            game.removeValidAction(Actions.CHOOSE_SATCHEL_TOKEN);
+        }
 
         return result;
 
@@ -91,10 +101,8 @@ public class ChooseTokenTypeAction extends Action {
     @Override
     public Action decodeAction(JsonObject jobj) {
 
-        // if missing data, throw exception
-        this.cardId = jobj.get("cardId").getAsString();
-
-        this.assignedTokenType = TokenType.valueOf(jobj.get("selected").getAsString());
+        this.cardId = ActionJson.requireString(jobj, "cardId");
+        this.assignedTokenType = ActionJson.requireTokenType(jobj, "selected");
 
         return this;
     }

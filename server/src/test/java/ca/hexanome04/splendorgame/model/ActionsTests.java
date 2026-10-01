@@ -3,6 +3,7 @@ package ca.hexanome04.splendorgame.model;
 import ca.hexanome04.splendorgame.model.action.actions.*;
 import ca.hexanome04.splendorgame.model.gameversions.orient.OrientGame;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
+import ca.hexanome04.splendorgame.model.action.Actions;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,9 +36,9 @@ public class ActionsTests {
 
         ArrayList<ActionResult> result = game.takeAction(p1.getName(), new BuyCardAction("01", tokensToUse));
 
-        // should be no more tier 1 cards available to be purchased
+        // the player does not hold the tokens offered, so nothing is bought
         assertThat(p1.getDevCards().isEmpty()).isTrue();
-        assertThat(ActionResult.INVALID_TOKENS_GIVEN).isIn(result);
+        assertThat(ActionResult.NOT_ENOUGH_TOKENS_IN_INVENTORY).isIn(result);
     }
 
     @DisplayName("Ensure players can buy a card when sufficient tokens provided.")
@@ -194,9 +195,9 @@ public class ActionsTests {
 
         ArrayList<ActionResult> result = game.takeAction(p1.getName(), new BuyCardAction("01", tokensToUse));
 
-        // make sure action is valid since player can afford it
+        // an empty payment does not cover the cost
         assertThat(p1.getDevCards().isEmpty()).isTrue();
-        assertThat(ActionResult.INVALID_TOKENS_GIVEN).isIn(result);
+        assertThat(ActionResult.PAYMENT_TOO_LOW).isIn(result);
     }
 
     @DisplayName("Ensure players can take two of same token in one turn.")
@@ -481,14 +482,12 @@ public class ActionsTests {
         tokensToAdd.put(TokenType.Brown, 1);
         p1.addTokens(tokensToAdd);
 
-        HashMap<TokenType, Integer> tokensToTake = new HashMap<>();
-        tokensToTake.put(TokenType.Blue, 1);
-        tokensToTake.put(TokenType.Brown, 1);
-        tokensToTake.put(TokenType.Red, 2);
+        // the bonuses already cover card 02 (Blue 1, Red 2, Brown 1), so the exact payment is nothing
+        ArrayList<ActionResult> result = game.takeAction(p1.getName(), new BuyCardAction("02", new HashMap<>()));
 
-        ArrayList<ActionResult> result = game.takeAction(p1.getName(), new BuyCardAction("02", tokensToTake));
-
+        // the Blue bonus of card 02 makes the player qualify for nobles 98 and 99
         assertThat(ActionResult.MUST_CHOOSE_NOBLE).isIn(result);
+        assertThat(game.getCurValidActions()).isEqualTo(java.util.List.of(Actions.CHOOSE_NOBLE));
     }
 
     @DisplayName("Ensure players can choose noble when prompted.")
@@ -499,19 +498,18 @@ public class ActionsTests {
         // get first player (name = "Player1")
         Player p1 = game.getPlayerFromName("Player1");
 
-        p1.addBonus(TokenType.Blue, 2);
+        p1.addBonus(TokenType.Blue, 1);
         p1.addBonus(TokenType.Green, 2);
-        p1.addBonus(TokenType.Red, 1);
+        p1.addBonus(TokenType.Red, 2);
         p1.addBonus(TokenType.Brown, 1);
 
-        HashMap<TokenType, Integer> tokensToAdd = new HashMap<>();
-        tokensToAdd.put(TokenType.Blue, 1);
-        tokensToAdd.put(TokenType.Red, 2);
-        tokensToAdd.put(TokenType.Brown, 1);
-        p1.addTokens(tokensToAdd);
+        // choosing a noble is only allowed while the player has to choose one
+        ArrayList<ActionResult> early = game.takeAction(p1.getName(), new ChooseNobleAction("98"));
+        assertThat(ActionResult.ACTION_NOT_ALLOWED).isIn(early);
+        assertThat(p1.getNobles().isEmpty()).isTrue();
 
-        HashMap<TokenType, Integer> tokensToTake = new HashMap<>();
-        tokensToTake.put(TokenType.Brown, 1);
+        // buying card 02 (covered by bonuses) makes the player qualify for nobles 98 and 99
+        game.takeAction(p1.getName(), new BuyCardAction("02", new HashMap<>()));
 
         NobleCard c1 = (NobleCard) game.getCardFromId("98");
         ArrayList<NobleCard> nobleCards = new ArrayList<>();
@@ -519,9 +517,12 @@ public class ActionsTests {
 
         ArrayList<ActionResult> result = game.takeAction(p1.getName(), new ChooseNobleAction("98"));
 
-        // make sure action is valid since player can afford it
+        // the chosen noble visits, the other one stays on the board, and the turn passes on
         assertThat(p1.getNobles()).isEqualTo(nobleCards);
+        assertThat(p1.getPrestigePoints()).isEqualTo(3 + 1);
+        assertThat(game.getCardFromId("99")).isNotNull();
         assertThat(ActionResult.TURN_COMPLETED).isIn(result);
+        assertThat(game.getTurnCounter()).isEqualTo(1);
     }
 
     @DisplayName("Ensure players can burn a double bonus card when burning bonuses to buy a card.")
@@ -540,7 +541,10 @@ public class ActionsTests {
         HashMap<TokenType, Integer> p2Tokens = new HashMap<>();
         p2Tokens.put(TokenType.Blue, 2);
 
-        game.takeAction(p1.getName(), new BuyCardAction("07", tokensToAdd));
+        // card 07 costs one Green
+        HashMap<TokenType, Integer> oneGreen = new HashMap<>();
+        oneGreen.put(TokenType.Green, 1);
+        game.takeAction(p1.getName(), new BuyCardAction("07", oneGreen));
 
         game.takeAction(p2.getName(), new TakeTokenAction(p2Tokens, new HashMap<>()));
 
@@ -754,7 +758,7 @@ public class ActionsTests {
         game.takeAction(p1.getName(), new BuyCardAction("15", tokensToAdd));
 
         Card expectedCard2 = game.getCardFromId("11");
-        game.takeAction(p1.getName(), new CascadeTier2Action("11"));
+        game.takeAction(p1.getName(), new CascadeTier1Action("11"));
 
         ArrayList<ActionResult> result = game.takeAction(p1.getName(), new ChooseTokenTypeAction("11", TokenType.Red));
 
@@ -784,7 +788,9 @@ public class ActionsTests {
         tokensToAdd.put(TokenType.Green, 1);
         p1.addTokens(tokensToAdd);
 
-        game.takeAction(p1.getName(), new CascadeTier2Action("13"));
+        // card 13 lets its buyer reserve a noble
+        ArrayList<ActionResult> buy = game.takeAction(p1.getName(), new BuyCardAction("13", tokensToAdd));
+        assertThat(ActionResult.MUST_RESERVE_NOBLE).isIn(buy);
 
         Card expected = game.getCardFromId("99");
         ArrayList<ActionResult> result = game.takeAction(p1.getName(), new ReserveNobleAction("99"));

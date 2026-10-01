@@ -1,5 +1,6 @@
 package ca.hexanome04.splendorgame.model;
 
+import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.gameversions.tradingposts.TradingPostsPlayer;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,150 +70,102 @@ public abstract class Card {
     }
 
     /**
-     * Check if this card can be purchased by the player.
+     * Check if this card can be purchased by the player with exactly the given tokens.
+     * This never changes the player's state.
      *
      * @param player player that wants to purchase this card
      * @param tokensToUse tokens requested to use
-     * @return true if player has the funds (and/or bonuses) and no excess tokens given
+     * @return true if the payment covers the cost exactly
      */
     public boolean isPurchasable(Player player, HashMap<TokenType, Integer> tokensToUse) {
+        return checkPayment(player, tokensToUse).isValid();
+    }
 
-        boolean purchasable = true;
-        HashMap<TokenType, Integer> tokens = new HashMap<>(tokensToUse);
+    /**
+     * Check a proposed payment for this card without changing any state.
+     *
+     * <p>Rules: bonuses reduce the cost of their colour; each gem token pays one gem of its own colour;
+     * gold tokens pay for any remaining gems (each gold covers two gems of one colour once the Trading Posts
+     * gold power is unlocked); whatever is still missing after that is covered by gold bonuses from double gold
+     * cards, and a double gold card is discarded as soon as one of its two bonuses is used. The payment must be
+     * exact: offering a gem the card does not need, or more gold than the remaining cost, is rejected. Cards
+     * paid with bonuses (cost type Bonus) take no tokens at all.</p>
+     *
+     * @param player player that wants to purchase this card
+     * @param tokensToUse tokens offered as payment (may be null or empty)
+     * @return the outcome of the check
+     */
+    public PaymentCheck checkPayment(Player player, Map<TokenType, Integer> tokensToUse) {
+        HashMap<TokenType, Integer> offered = new HashMap<>();
+        if (tokensToUse != null) {
+            offered.putAll(tokensToUse);
+        }
+        for (Map.Entry<TokenType, Integer> entry : offered.entrySet()) {
+            if (entry.getValue() == null || entry.getValue() < 0) {
+                return PaymentCheck.rejected(ActionResult.INVALID_TOKENS_GIVEN);
+            }
+            if (entry.getKey() == TokenType.Satchel && entry.getValue() > 0) {
+                return PaymentCheck.rejected(ActionResult.INVALID_TOKENS_GIVEN);
+            }
+        }
+
+        if (!player.hasTokens(offered)) {
+            return PaymentCheck.rejected(ActionResult.NOT_ENOUGH_TOKENS_IN_INVENTORY);
+        }
+
         Map<TokenType, Integer> bonuses = player.getBonuses();
 
-        // ensure player has the tokens to use
-        if (!player.hasTokens(tokensToUse)) {
-            return false;
+        if (this.costType == CostType.Bonus) {
+            int tokensOffered = offered.values().stream().mapToInt(Integer::intValue).sum();
+            if (tokensOffered > 0) {
+                return PaymentCheck.rejected(ActionResult.PAYMENT_TOO_HIGH);
+            }
+            for (TokenType type : TokenType.values()) {
+                if (type.isGem() && amount(this.tokenCost, type) > amount(bonuses, type)) {
+                    return PaymentCheck.rejected(ActionResult.NOT_ENOUGH_BONUSES);
+                }
+            }
+            return new PaymentCheck(ActionResult.VALID_ACTION, 0, 0);
         }
 
-        if (this.costType == CostType.Token) {
-            // clone so we don't modify the card's data
-            HashMap<TokenType, Integer> cost = new HashMap<>(this.tokenCost);
+        // how many gems one gold token (or one gold bonus) pays for
+        int goldValue = player instanceof TradingPostsPlayer tpp && tpp.goldTokenWorthTwoTokens.isUnlocked() ? 2 : 1;
 
-            // Subtract the bonuses a player has
-            // Easier way than the method below this forEach block
-            cost.forEach((key, value) -> {
-                cost.put(key, value - bonuses.get(key));
-            });
-
-            // Subtract the tokens provided
-            for (TokenType t : tokens.keySet()) {
-                if (t == TokenType.Gold) {
-                    continue;
-                }
-                int costAmt = cost.get(t);
-                cost.put(t, costAmt - tokens.get(t));
+        // gold needed for what the gem tokens leave unpaid (gold always pays gems of a single colour)
+        int goldNeeded = 0;
+        for (TokenType type : TokenType.values()) {
+            if (!type.isGem()) {
+                continue;
             }
-
-
-            if (tokens.get(TokenType.Gold) != null) {
-                if (player instanceof TradingPostsPlayer p && p.goldTokenWorthTwoTokens.isUnlocked()) {
-
-                    for (int i = 0; i < tokens.get(TokenType.Gold); i++) {
-                        for (TokenType type : cost.keySet()) {
-                            if (cost.get(type) > 0) {
-                                cost.put(type, cost.get(type) - 2);
-                                break;
-                            }
-                        }
-                    }
-
-
-                } else {
-                    for (int i = 0; i < tokens.get(TokenType.Gold); i++) {
-                        for (TokenType type : cost.keySet()) {
-                            if (cost.get(type) > 0) {
-                                cost.put(type, cost.get(type) - 1);
-                                break;
-                            }
-                        }
-                    }
-                }
+            int stillOwed = Math.max(0, amount(this.tokenCost, type) - amount(bonuses, type));
+            int paid = amount(offered, type);
+            if (paid > stillOwed) {
+                return PaymentCheck.rejected(ActionResult.PAYMENT_TOO_HIGH);
             }
-
-            int doubleGoldTokenAmt = player.getBonuses().get(TokenType.Gold);
-            int doubleGoldTokensUsed = 0;
-            // If a player is not a trading post player, or if he is, doesn't have it unlocked, enter if true branch
-            if (!(player instanceof TradingPostsPlayer) || !((TradingPostsPlayer) player).goldTokenWorthTwoTokens.isUnlocked()) {
-                for (int i = 0; i < doubleGoldTokenAmt; i++) {
-                    for (TokenType type : cost.keySet()) {
-                        if (cost.get(type) > 0) {
-                            cost.put(type, cost.get(type) - 1);
-                            doubleGoldTokensUsed++;
-                            break;
-                        }
-                    }
-                }
-
-
-
-            // Otherwise, he is a trading post player AND he has it unlocked
-            } else {
-                // My logic is, for each individual gold bonus, remove 2 of a random color until it's zero or less
-                for (int i = 0; i < doubleGoldTokenAmt; i++) {
-                    for (TokenType type : cost.keySet()) {
-                        if (cost.get(type) > 0) {
-                            cost.put(type, cost.get(type) - 2);
-                            doubleGoldTokensUsed++;
-                            break;
-                        }
-                    }
-                }
-
-            }
-
-            if (doubleGoldTokenAmt > 0) {
-                for (TokenType type : cost.keySet()) {
-                    if (cost.get(type) > 0) {
-                        purchasable = false;
-                    }
-                }
-
-                HashMap<TokenType, Integer> toRemove = new HashMap<>();
-
-                // Getting the amount of double gold token cards to remove, rounding up if you wasted one by using half
-                if (doubleGoldTokensUsed % 2 == 1) {
-                    doubleGoldTokensUsed++;
-                }
-                toRemove.put(TokenType.Gold, doubleGoldTokensUsed);
-                player.removeBonuses(toRemove);
-                doubleGoldTokensUsed = doubleGoldTokensUsed / 2;
-
-                for (int i = 0; i < doubleGoldTokensUsed; i++) {
-                    for (DevelopmentCard c : player.getDevCards()) {
-                        if (c.getTokenType() == TokenType.Gold) {
-                            player.removeCard(c);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Final check for any remaining tokens in cost, if there are, then it's not purchasable
-            for (Integer value : cost.values()) {
-                if (value > 0) {
-                    purchasable = false;
-                    break;
-                }
-            }
-
-
-        } else if (this.costType == CostType.Bonus) {
-            HashMap<TokenType, Integer> cost = new HashMap<>(this.tokenCost);
-            cost.forEach((key, value) -> cost.put(key, value - bonuses.get(key)));
-
-            // final check to ensure that we fulfilled the cost for the card, if passed then can purchase
-            for (HashMap.Entry<TokenType, Integer> entry : cost.entrySet()) {
-                if (entry.getValue() > 0) {
-                    purchasable = false;
-                    break;
-                }
-            }
-
+            int deficit = stillOwed - paid;
+            goldNeeded += (deficit + goldValue - 1) / goldValue;
         }
 
-        return purchasable;
+        int goldOffered = amount(offered, TokenType.Gold);
+        if (goldOffered > goldNeeded) {
+            return PaymentCheck.rejected(ActionResult.PAYMENT_TOO_HIGH);
+        }
+
+        int goldBonusesUsed = goldNeeded - goldOffered;
+        int goldBonusesOwned = amount(bonuses, TokenType.Gold);
+        if (goldBonusesUsed > goldBonusesOwned) {
+            return PaymentCheck.rejected(ActionResult.PAYMENT_TOO_LOW);
+        }
+
+        // each double gold card holds two gold bonuses and is discarded as a whole once used
+        int goldCardsToDiscard = (goldBonusesUsed + 1) / 2;
+        int goldBonusesToRemove = Math.min(goldBonusesOwned, goldCardsToDiscard * 2);
+        return new PaymentCheck(ActionResult.VALID_ACTION, goldBonusesToRemove, goldCardsToDiscard);
+    }
+
+    private static int amount(Map<TokenType, Integer> map, TokenType type) {
+        Integer value = map.get(type);
+        return value == null ? 0 : value;
     }
 
 }

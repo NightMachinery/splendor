@@ -3,6 +3,7 @@ package ca.hexanome04.splendorgame.model.action.actions;
 import ca.hexanome04.splendorgame.model.Player;
 import ca.hexanome04.splendorgame.model.TokenType;
 import ca.hexanome04.splendorgame.model.action.Action;
+import ca.hexanome04.splendorgame.model.action.ActionJson;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
@@ -44,62 +45,66 @@ public class TakeExtraTokenAfterPurchasePowerAction extends Action {
 
         ArrayList<ActionResult> result = new ArrayList<>();
 
-        if (takeToken == putBackToken) {
-            result.add(ActionResult.VALID_ACTION);
-            result.add(ActionResult.TURN_COMPLETED);
-            game.removeValidAction(Actions.TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER);
+        if (takeToken != null && !takeToken.isGem()) {
+            result.add(ActionResult.GOLD_CANNOT_BE_TAKEN);
+            return result;
+        }
+        if (putBackToken == TokenType.Satchel) {
+            result.add(ActionResult.INVALID_TOKENS_GIVEN);
             return result;
         }
 
-        int playerTotalTokens = 0;
-        int takeTokenNum = this.takeToken == null ? 0 : 1;
-        int putBackTokenNum = this.putBackToken == null ? 0 : 1;
-
-        for (TokenType token : game.getTokens().keySet()) {
-            // add to player token sum how many of this token the player will have after this turn
-            int playerCurrentTokensNum = player.getTokens().get(token) == null ? 0 : player.getTokens().get(token);
-            playerTotalTokens += playerCurrentTokensNum;
+        // skipping the extra token is allowed
+        if (takeToken == null && putBackToken == null) {
+            return completed(game, result);
+        }
+        if (takeToken == null) {
+            result.add(ActionResult.PUT_BACK_NOT_ALLOWED);
+            return result;
         }
 
-        if (takeToken != null) {
-            int tokenLeftOnBoard = game.getTokens().get(takeToken) - takeTokenNum;
-            if (tokenLeftOnBoard < 0) {
-                result.add(ActionResult.NOT_ENOUGH_TOKENS_ON_BOARD);
+        int onBoard = game.getTokens().getOrDefault(takeToken, 0);
+        if (onBoard < 1) {
+            result.add(ActionResult.NOT_ENOUGH_TOKENS_ON_BOARD);
+            return result;
+        }
+
+        int playerTotalTokens = 1;
+        for (Integer amount : player.getTokens().values()) {
+            playerTotalTokens += amount == null ? 0 : amount;
+        }
+
+        HashMap<TokenType, Integer> takeTokens = new HashMap<>();
+        takeTokens.put(takeToken, 1);
+        HashMap<TokenType, Integer> putBackTokens = new HashMap<>();
+
+        if (putBackToken != null) {
+            if (playerTotalTokens <= 10) {
+                result.add(ActionResult.TOO_MANY_TOKENS_RETURNED);
                 return result;
             }
+            int held = player.getTokens().getOrDefault(putBackToken, 0) + (putBackToken == takeToken ? 1 : 0);
+            if (held < 1) {
+                result.add(ActionResult.NOT_ENOUGH_TOKENS_IN_INVENTORY);
+                return result;
+            }
+            putBackTokens.put(putBackToken, 1);
+            playerTotalTokens--;
         }
 
-
-        playerTotalTokens += (takeTokenNum - putBackTokenNum);
-
-        // check if player total token inventory goes over 10
         if (playerTotalTokens > 10) {
             result.add(ActionResult.MAXIMUM_TOKENS_IN_INVENTORY);
             return result;
-        }
-
-        // Create hashmaps for the game to add/remove tokens
-        HashMap<TokenType, Integer> takeTokens = new HashMap<>();
-        HashMap<TokenType, Integer> putBackTokens = new HashMap<>();
-        if (takeToken != null) {
-            takeTokens.put(takeToken, 1);
-        }
-
-        int putBackTokenInventory = player.getTokens().get(this.putBackToken) == null
-                ? 0 : player.getTokens().get(this.putBackToken);
-        if (putBackTokenInventory <= 0 && putBackTokenNum > 0) {
-            result.add(ActionResult.INVALID_TOKEN_CHOSEN);
-            return result;
-        }
-
-        if (putBackToken != null) {
-            putBackTokens.put(putBackToken, 1);
         }
 
         game.removeTokens(takeTokens);
         game.addTokens(putBackTokens);
         player.takeTokens(takeTokens, putBackTokens);
 
+        return completed(game, result);
+    }
+
+    private static List<ActionResult> completed(Game game, List<ActionResult> result) {
         result.add(ActionResult.VALID_ACTION);
         result.add(ActionResult.TURN_COMPLETED);
         game.removeValidAction(Actions.TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER);
@@ -108,16 +113,9 @@ public class TakeExtraTokenAfterPurchasePowerAction extends Action {
 
     @Override
     public Action decodeAction(JsonObject jobj) {
-
-        if (jobj.has("takeToken")) {
-            this.takeToken = TokenType.valueOf(jobj.get("takeToken").getAsString());
-        }
-        if (jobj.has("putBackToken")) {
-            this.putBackToken = TokenType.valueOf(jobj.get("putBackToken").getAsString());
-        }
-
+        this.takeToken = ActionJson.optionalTokenType(jobj, "takeToken");
+        this.putBackToken = ActionJson.optionalTokenType(jobj, "putBackToken");
         return this;
-
     }
 
 }

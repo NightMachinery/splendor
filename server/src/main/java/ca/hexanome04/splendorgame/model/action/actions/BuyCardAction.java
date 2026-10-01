@@ -2,12 +2,12 @@ package ca.hexanome04.splendorgame.model.action.actions;
 
 import ca.hexanome04.splendorgame.model.*;
 import ca.hexanome04.splendorgame.model.action.Action;
+import ca.hexanome04.splendorgame.model.action.ActionJson;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
 import ca.hexanome04.splendorgame.model.gameversions.orient.OrientGame;
 import ca.hexanome04.splendorgame.model.gameversions.tradingposts.TradingPostsPlayer;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.*;
 
@@ -28,7 +28,7 @@ public class BuyCardAction extends Action {
     public BuyCardAction(String buyCardId, HashMap<TokenType, Integer> selectedTokens) {
         super(Actions.BUY_CARD);
         this.buyCardId = buyCardId;
-        this.selectedTokens = selectedTokens;
+        this.selectedTokens = selectedTokens == null ? new HashMap<>() : selectedTokens;
     }
 
     /**
@@ -41,9 +41,9 @@ public class BuyCardAction extends Action {
     @Override
     protected List<ActionResult> run(Game game, Player player) {
 
-        // get card from board
-        // should be a development card (hopefully)
-        DevelopmentCard dc = (DevelopmentCard) game.getCardFromId(this.buyCardId);
+        // get card from board (ids of nobles or cities are not development cards)
+        Card boardCard = game.getCardFromId(this.buyCardId);
+        DevelopmentCard dc = boardCard instanceof DevelopmentCard d ? d : null;
 
         // try reserved
         boolean wasReserved = false;
@@ -53,32 +53,32 @@ public class BuyCardAction extends Action {
         }
 
         if (dc == null) {
-            throw new SplendorException("Card with id '" + this.buyCardId + "' does not exist.");
+            throw new SplendorException("Card with id '" + this.buyCardId
+                    + "' is neither a development card on the board nor one of your reserved cards.");
         }
 
         // for orient, can only buy satchel if you own another card with a bonus
-        if (dc.getTokenType() == TokenType.Satchel) {
-            boolean hasAnotherBonusCard = false;
-            for (DevelopmentCard c : player.getDevCards()) {
-                if (c.getTokenType() != null && c.getTokenType() != TokenType.Satchel
-                        && c.getTokenType() != TokenType.Gold) {
-                    // doesn't fail the checks above? should be good maybe
-                    hasAnotherBonusCard = true;
-                    break;
-                }
-            }
-            if (!hasAnotherBonusCard) {
-                throw new SplendorException("Cannot purchase card with satchel bonus "
-                        + "without having another purchased card with a bonus.");
-            }
+        if (dc.getTokenType() == TokenType.Satchel && !OrientGame.ownsGemBonusCard(player)) {
+            throw new SplendorException("Cannot purchase card with satchel bonus "
+                    + "without having another purchased card with a bonus.");
         }
-
 
         ArrayList<ActionResult> result = new ArrayList<>();
 
-        if (!dc.isPurchasable(player, selectedTokens)) {
-            result.add(ActionResult.INVALID_TOKENS_GIVEN);
+        // check the payment without touching any state, so a rejected buy changes nothing
+        PaymentCheck payment = dc.checkPayment(player, selectedTokens);
+        if (!payment.isValid()) {
+            result.add(payment.result());
             return result;
+        }
+
+        // pay
+        player.removeTokens(selectedTokens);
+        game.addTokens(selectedTokens);
+        discardGoldCards(player, payment);
+        // a sacrifice (bonus cost) discards cards the player already owned, never the card being bought
+        if (dc.getCostType() == CostType.Bonus) {
+            player.burnBonuses(dc.getTokenCost());
         }
 
         player.addCard(dc);
@@ -93,39 +93,13 @@ public class BuyCardAction extends Action {
         }
         player.addPrestigePoints(dc.getPrestigePoints());
 
-        game.addTokens(selectedTokens);
-        player.removeTokens(selectedTokens);
-
-        if (dc.getClass().equals(OrientDevelopmentCard.class)) {
-            OrientDevelopmentCard orientCard = (OrientDevelopmentCard) dc;
-            if (orientCard.getCostType() == CostType.Bonus) {
-                player.burnBonuses(orientCard.getTokenCost());
-            }
-            if (orientCard.getReserveNoble() && game instanceof OrientGame og && og.getNobles().size() > 0) {
-                result.add(ActionResult.MUST_RESERVE_NOBLE);
-            }
-            if (orientCard.getCascadeType() == CascadeType.Tier1 && game instanceof OrientGame og
-                    && (og.getTier1PurchasableDevelopmentCards().size() > 0
-                    || og.getTier1PurchasableOrientCards().size() > 0)) {
-                result.add(ActionResult.MUST_CHOOSE_CASCADE_CARD_TIER_1);
-
-                // Differentiation between up and down needed? Unclear
-            } else if (orientCard.getCascadeType() == CascadeType.Tier2 && game instanceof OrientGame og
-                    && (og.getTier2PurchasableDevelopmentCards().size() > 0
-                    || og.getTier2PurchasableOrientCards().size() > 0)) {
-                result.add(ActionResult.MUST_CHOOSE_CASCADE_CARD_TIER_2);
-
-            }
-            if (orientCard.getTokenType() == TokenType.Satchel) {
-                result.add(ActionResult.MUST_CHOOSE_TOKEN_TYPE);
-            }
+        if (game instanceof OrientGame og) {
+            result.addAll(og.followUpsForAcquiredCard(player, dc));
         }
 
         // Take extra token if player has unlocked power 1
-        if (player instanceof TradingPostsPlayer tpp) {
-            if (tpp.extraTokenAfterPurchase.isUnlocked()) {
-                result.add(ActionResult.MUST_TAKE_EXTRA_TOKEN_AFTER_PURCHASE);
-            }
+        if (player instanceof TradingPostsPlayer tpp && tpp.extraTokenAfterPurchase.isUnlocked()) {
+            result.add(ActionResult.MUST_TAKE_EXTRA_TOKEN_AFTER_PURCHASE);
         }
 
         if (result.size() == 0) {
@@ -142,20 +116,32 @@ public class BuyCardAction extends Action {
         return result;
     }
 
+    /**
+     * Remove the gold bonuses used by the payment and discard the double gold cards they came from.
+     *
+     * @param player buyer
+     * @param payment checked payment
+     */
+    private static void discardGoldCards(Player player, PaymentCheck payment) {
+        if (payment.goldBonusesToRemove() > 0) {
+            HashMap<TokenType, Integer> goldBonuses = new HashMap<>();
+            goldBonuses.put(TokenType.Gold, payment.goldBonusesToRemove());
+            player.removeBonuses(goldBonuses);
+        }
+        for (int i = 0; i < payment.goldCardsToDiscard(); i++) {
+            for (DevelopmentCard c : player.getDevCards()) {
+                if (c.getTokenType() == TokenType.Gold) {
+                    player.removeCard(c);
+                    break;
+                }
+            }
+        }
+    }
+
     @Override
     public Action decodeAction(JsonObject jobj) {
-
-        // if missing data, throw exception
-        this.buyCardId = jobj.get("cardId").getAsString();
-
-        JsonObject tokens = jobj.get("tokens").getAsJsonObject();
-        for (Map.Entry<String, JsonElement> entry : tokens.entrySet()) {
-            TokenType type = TokenType.valueOf(entry.getKey());
-            int amount = entry.getValue().getAsInt();
-
-            selectedTokens.put(type, amount);
-        }
-
+        this.buyCardId = ActionJson.requireString(jobj, "cardId");
+        this.selectedTokens = ActionJson.tokenAmounts(jobj, "tokens", true);
         return this;
     }
 

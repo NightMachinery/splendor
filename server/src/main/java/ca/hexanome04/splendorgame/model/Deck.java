@@ -4,6 +4,7 @@ import ca.hexanome04.splendorgame.model.gameversions.cities.CityCard;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.Stack;
 
 /**
@@ -102,6 +103,28 @@ public class Deck<T extends Card> {
      */
     public void shuffle() {
         Collections.shuffle(cards);
+    }
+
+    /**
+     * Shuffles the deck with the given source of randomness (so that tests can make games reproducible).
+     *
+     * @param random source of randomness, or null for an unseeded shuffle
+     */
+    public void shuffle(Random random) {
+        if (random == null) {
+            shuffle();
+        } else {
+            Collections.shuffle(cards, random);
+        }
+    }
+
+    /**
+     * Number of face-down cards left in this deck.
+     *
+     * @return number of cards that can still be drawn
+     */
+    public int getHiddenCardCount() {
+        return this.cards.size();
     }
 
     /**

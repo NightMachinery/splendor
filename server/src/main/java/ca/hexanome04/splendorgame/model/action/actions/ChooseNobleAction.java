@@ -1,10 +1,10 @@
 package ca.hexanome04.splendorgame.model.action.actions;
 
-import ca.hexanome04.splendorgame.model.Card;
 import ca.hexanome04.splendorgame.model.NobleCard;
 import ca.hexanome04.splendorgame.model.Player;
 import ca.hexanome04.splendorgame.model.SplendorException;
 import ca.hexanome04.splendorgame.model.action.Action;
+import ca.hexanome04.splendorgame.model.action.ActionJson;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
@@ -41,32 +41,22 @@ public class ChooseNobleAction extends Action {
     protected List<ActionResult> run(Game game, Player p) {
 
         ArrayList<ActionResult> result = new ArrayList<>();
+        OrientGame og = (OrientGame) game;
 
-        // get list of noble card ids that player can actually get
-        List<NobleCard> qualifyingNobles = ((OrientGame) game).qualifiesForNoble(p);
-
+        // get list of noble card ids that player can actually get (board and own reserved nobles)
         NobleCard nc = null;
-        for (NobleCard nobleCard : qualifyingNobles) {
+        for (NobleCard nobleCard : og.qualifiesForNoble(p)) {
             if (nobleCard.getId().equals(nobleId)) {
                 nc = nobleCard;
                 break;
             }
         }
 
-        // check if reserved by looking if card id exists inside reserved noble list
-        boolean wasReserved = p.getReservedNobles().stream().filter(c -> c.getId().equals(nobleId)).toList().size() != 0;
-
         if (nc == null) {
             throw new SplendorException("Noble card with id '" + this.nobleId + "' does not exist or you do not qualify for it.");
         }
 
-        if (wasReserved) {
-            p.removeReservedNoble(nc);
-        }
-
-        // no error handling
-        game.takeCard(nc);
-        p.addNoble(nc);
+        og.grantNoble(p, nc);
 
         if (game.getCurValidActions().contains(Actions.CHOOSE_NOBLE)) {
             result.add(ActionResult.VALID_ACTION);
@@ -80,10 +70,7 @@ public class ChooseNobleAction extends Action {
 
     @Override
     public Action decodeAction(JsonObject jobj) {
-
-        // if missing data, throw exception
-        this.nobleId = jobj.get("cardId").getAsString();
-
+        this.nobleId = ActionJson.requireString(jobj, "cardId");
         return this;
     }
 }

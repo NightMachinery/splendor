@@ -24,6 +24,9 @@ public class ActionDecoder {
      * @return a new action (null if invalid name)
      */
     public static Action createAction(String identifier, JsonObject gson) {
+        if (gson == null) {
+            throw new SplendorException("Missing request body for action " + identifier + ".");
+        }
         try {
             Actions actionType = Actions.valueOf(identifier);
 
@@ -40,8 +43,11 @@ public class ActionDecoder {
                 case CHOOSE_CITY -> new ChooseCityAction().decodeAction(gson);
             };
 
+        } catch (SplendorException e) {
+            // already carries a message that says what is wrong with the body
+            throw new SplendorException("Invalid data given for action " + identifier + ": " + e.getMessage());
         } catch (Exception e) {
-            throw new SplendorException("Invalid data given for action.");
+            throw new SplendorException("Invalid data given for action " + identifier + ".");
         }
     }
 

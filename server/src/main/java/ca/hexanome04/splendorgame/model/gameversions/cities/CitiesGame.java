@@ -7,15 +7,12 @@ import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.GameVersions;
 import ca.hexanome04.splendorgame.model.gameversions.orient.*;
-import java.io.*;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.ResourceUtils;
 
 
 /**
@@ -28,6 +25,9 @@ public class CitiesGame extends OrientGame {
     private Deck<CityCard> citiesDeck;
     static final Logger logger = LoggerFactory.getLogger(CitiesGame.class);
 
+    /** City card file to load (null means the default classpath resource); never saved or sent to clients. */
+    private transient String cityCardsResource;
+
     /**
      * Creates a Splendor Cities game with the board state, number of prestige points to win and ordered player list.
      *
@@ -38,27 +38,28 @@ public class CitiesGame extends OrientGame {
     }
 
     /**
+     * Use a specific city card file instead of the default {@code classpath:citycards.csv} (for tests and tools).
+     * Must be called before {@link #createSplendorBoard()}.
+     *
+     * @param resource Spring resource location
+     */
+    public void setCityCardsResource(String resource) {
+        this.cityCardsResource = resource;
+    }
+
+    /**
      * Constructor for the cities splendorBoard, initializes the city deck with cards from a file.
      */
     @Override
     public void createSplendorBoard() {
         super.createSplendorBoard();
 
-        String line = "";
         citiesDeck = new Deck<>();
+        String resource = cityCardsResource == null ? cityCardsFilename : cityCardsResource;
+        TokenType[] types = {White, Blue, Green, Red, Brown};
 
-        try (InputStream inputStream = ResourceUtils.getURL(cityCardsFilename).openStream();
-             BufferedReader br = new BufferedReader(new InputStreamReader(inputStream, Charset.defaultCharset()))) {
-            TokenType[] types = {White, Blue, Green, Red, Brown};
-            int lines = 1;
-            while ((line = br.readLine()) != null) {
-                if (lines == 1) {
-                    // skip first line (headers)
-                    lines++;
-                    continue;
-                }
-
-                String[] card = line.split(",");
+        for (String[] card : readCardFile(resource)) {
+            try {
                 String[] cost = card[4].split(";");
 
                 HashMap<TokenType, Integer> tokenCost = new HashMap<>();
@@ -76,17 +77,15 @@ public class CitiesGame extends OrientGame {
                 int prestigePoints = Integer.parseInt(card[2]);
                 String cardId = card[6];
 
-                switch (card[5]) {
-                    case "C" -> citiesDeck.add(new CityCard(prestigePoints, tokenCost, cardId, numSameBonuses));
-                    default -> throw new Exception("File not in proper format");
+                if (!"C".equals(card[5])) {
+                    throw new IllegalArgumentException("Unknown city row type '" + card[5] + "'");
                 }
-
-                lines++;
+                citiesDeck.add(new CityCard(prestigePoints, tokenCost, cardId, numSameBonuses));
+            } catch (RuntimeException e) {
+                logger.error("Malformed city line in {}: {}", resource, String.join(",", card), e);
+                throw new IllegalStateException("Malformed city line in " + resource + ": " + String.join(",", card), e);
             }
-        } catch (Exception e) {
-            logger.error("Could not read file"); // Testing
         }
-
     }
 
     /**
@@ -96,7 +95,7 @@ public class CitiesGame extends OrientGame {
     public void initBoard() {
         super.initBoard();
 
-        citiesDeck.shuffle();
+        citiesDeck.shuffle(getShuffleRandom());
         citiesDeck.drawCards(3);
 
     }
@@ -121,7 +120,17 @@ public class CitiesGame extends OrientGame {
     }
 
     /**
+     * The city deck of the board.
+     *
+     * @return city deck
+     */
+    public Deck<CityCard> getCitiesDeck() {
+        return citiesDeck;
+    }
+
+    /**
      * Check if player has the right bonuses to qualify for any cities.
+     * Also records the cities in the player's list of cities qualified for (shown by the client).
      *
      * @param player Player to check
      * @return List of cities player qualifies for
@@ -135,12 +144,12 @@ public class CitiesGame extends OrientGame {
 
             boolean qualifiesForCity = true;
 
-            // check for same bonus requirement
+            // check for same bonus requirement: that many bonuses of one gem colour (gold does not count)
+            // that is not already part of the city's colour requirements
             int maxSameNumBonuses = 0;
             for (Map.Entry<TokenType, Integer> entry : player.getBonuses().entrySet()) {
                 TokenType color = entry.getKey();
-                // make sure same bonus color is not already in normal bonus price
-                if (entry.getValue() > maxSameNumBonuses && (city.getTokenCost().get(color) == 0)) {
+                if (color.isGem() && entry.getValue() > maxSameNumBonuses && city.getTokenCost().get(color) == 0) {
                     maxSameNumBonuses = entry.getValue();
                 }
             }
@@ -173,63 +182,46 @@ public class CitiesGame extends OrientGame {
     }
 
     /**
-     * Adds a city to a player's list of cities they qualified for.
+     * At the end of a turn a player without a city takes the city they qualify for, or chooses one if they
+     * qualify for several. Taking a city ends the game at the end of the round.
      *
-     * @param playerName name of the player getting the city
-     * @param results action result list before adding the city
-     * @return action result list after adding the city
+     * @param player current player
+     * @param results results of the action, MUST_CHOOSE_CITY is appended when a choice is needed
      */
-    public ArrayList<ActionResult> addCityToPlayer(String playerName, ArrayList<ActionResult> results) {
-        CitiesPlayer player = (CitiesPlayer) this.getPlayerFromName(playerName);
-        ArrayList<CityCard> citiesQualifiedFor = qualifiesCities(player);
-
-        if (citiesQualifiedFor.size() == 1) {
-            player.addCity(citiesQualifiedFor.get(0));
-            citiesDeck.take(citiesQualifiedFor.get(0));
-        } else if (citiesQualifiedFor.size() > 1) {
-            this.clearMainValidActions();
-            results.add(ActionResult.MUST_CHOOSE_CITY);
-            this.addValidAction(Actions.CHOOSE_CITY);
+    @Override
+    protected void expansionEndOfTurnChecks(Player player, List<ActionResult> results) {
+        CitiesPlayer cp = (CitiesPlayer) player;
+        if (!cp.getCities().isEmpty()) {
+            return;
         }
-
-        return results;
+        ArrayList<CityCard> citiesQualifiedFor = qualifiesCities(cp);
+        if (citiesQualifiedFor.size() == 1) {
+            takeCard(citiesQualifiedFor.get(0));
+            cp.addCity(citiesQualifiedFor.get(0));
+        } else if (citiesQualifiedFor.size() > 1) {
+            this.addValidAction(Actions.CHOOSE_CITY);
+            results.add(ActionResult.MUST_CHOOSE_CITY);
+        }
     }
 
     @Override
-    public List<Player> checkForWin() {
-        if (getPlayersWhoCanWin().size() > 0 && this.getTurnCounter() != 0
-                && this.getTurnCounter() % (this.getPlayers().size() - 1) == 0) {
-
-            List<Player> tmpWinners = new ArrayList<>(this.getWinner());
-            tmpWinners.add(getPlayersWhoCanWin().get(0));
-
-            for (Player p : getPlayersWhoCanWin()) {
-                Player currentWinner = tmpWinners.get(0);
-                if (p == currentWinner) {
-                    continue;
-                }
-                if (p.getPrestigePoints() > currentWinner.getPrestigePoints()) {
-                    tmpWinners.clear();
-                    tmpWinners.add(p);
-                } else if (p.getPrestigePoints() == currentWinner.getPrestigePoints()) {
-                    if (!tmpWinners.contains(currentWinner)) {
-                        tmpWinners.add(currentWinner);
-                    }
-                    if (!tmpWinners.contains(p)) {
-                        tmpWinners.add(p);
-                    }
-                }
-            }
-            this.setGameOver(true);
-            return tmpWinners;
+    protected void removeImpossibleFollowUps(Player player) {
+        super.removeImpossibleFollowUps(player);
+        if (getCurValidActions().contains(Actions.CHOOSE_CITY) && qualifiesCities(player).isEmpty()) {
+            removeValidAction(Actions.CHOOSE_CITY);
         }
-        return null;
     }
 
+    /**
+     * A Cities game ends at the end of the round in which a player took a city.
+     *
+     * @param player player to check
+     * @return true if the player owns a city
+     */
     @Override
     public boolean canPlayerWin(Player player) {
         CitiesPlayer p = (CitiesPlayer) player;
-        return qualifiesCities(p).size() > 0;
+        return !p.getCities().isEmpty();
     }
 
     @Override
