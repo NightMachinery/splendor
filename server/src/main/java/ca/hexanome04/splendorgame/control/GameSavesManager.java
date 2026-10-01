@@ -166,7 +166,7 @@ public class GameSavesManager {
             GameVersions gameVer = GameVersions.valueOf(jsonObject.get("gameVersion").getAsString());
             return switch (gameVer) {
                 case BASE_ORIENT -> gson.fromJson(jsonObject, OrientGame.class);
-                case BASE_ORIENT_CITIES -> gson.fromJson(jsonObject, CitiesGame.class);
+                case BASE_ORIENT_CITIES, BASE_ORIENT_CITIES_NOBLES -> gson.fromJson(jsonObject, CitiesGame.class);
                 case BASE_ORIENT_TRADE_ROUTES -> gson.fromJson(jsonObject, TradingPostsGame.class);
             };
         } catch (Exception e) {

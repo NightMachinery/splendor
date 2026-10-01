@@ -150,7 +150,7 @@ public class SessionManager {
 
         Game game = switch (version) {
             case BASE_ORIENT -> new OrientGame(15, 0);
-            case BASE_ORIENT_CITIES -> new CitiesGame(0);
+            case BASE_ORIENT_CITIES, BASE_ORIENT_CITIES_NOBLES -> new CitiesGame(version, 0);
             case BASE_ORIENT_TRADE_ROUTES -> new TradingPostsGame(15, 0);
         };
 

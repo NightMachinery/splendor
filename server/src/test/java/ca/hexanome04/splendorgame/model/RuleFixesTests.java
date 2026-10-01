@@ -522,6 +522,19 @@ public class RuleFixesTests {
         assertThat(game.getTurnCounter()).isEqualTo(1);
     }
 
+    @DisplayName("Cities without nobles: a reserve-noble card cannot get the turn stuck")
+    @Test
+    void testCitiesNoNoblesReserveNobleCard() throws FileNotFoundException {
+        CitiesGame game = GameUtils.createNewCitiesGame(2);
+        Player p1 = game.getPlayerFromName("Player1");
+        p1.addTokens(tokens(TokenType.Green, 1));
+        assertThat(game.getNobles()).isEmpty();
+
+        game.takeAction(p1.getName(), new BuyCardAction("13", tokens(TokenType.Green, 1)));
+        assertThat(p1.getReservedNobles()).isEmpty();
+        assertThat(game.getTurnCounter()).isEqualTo(1);
+    }
+
     @DisplayName("At most one noble visits per turn, and CHOOSE_NOBLE is listed once")
     @Test
     void testOneNoblePerTurn() throws FileNotFoundException {

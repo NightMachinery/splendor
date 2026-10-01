@@ -72,6 +72,11 @@ public class Initializer {
                         gsDisplayName + " Cities", gsLocation,
                         2, 4, "true"),
 
+            // "Nobles and Cities" must not contain, or be contained in, another display name: the LS rejects that
+            new GameServiceInfo(gsName + "_" + GameVersions.BASE_ORIENT_CITIES_NOBLES,
+                        gsDisplayName + " Nobles and Cities", gsLocation,
+                        2, 4, "true"),
+
             new GameServiceInfo(gsName + "_" + GameVersions.BASE_ORIENT_TRADE_ROUTES,
                         gsDisplayName + " Trade Routes", gsLocation,
                         2, 4, "true"),

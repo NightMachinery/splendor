@@ -29,12 +29,25 @@ public class CitiesGame extends OrientGame {
     private transient String cityCardsResource;
 
     /**
-     * Creates a Splendor Cities game with the board state, number of prestige points to win and ordered player list.
+     * Creates a Splendor Cities game played without nobles (the official Cities rule).
      *
      * @param turnCounter The turn id associated with the player.
      */
     public CitiesGame(int turnCounter) {
-        super(GameVersions.BASE_ORIENT_CITIES, -1, turnCounter);
+        this(GameVersions.BASE_ORIENT_CITIES, turnCounter);
+    }
+
+    /**
+     * Creates a Splendor Cities game.
+     *
+     * @param gameVersion BASE_ORIENT_CITIES (no nobles) or BASE_ORIENT_CITIES_NOBLES (nobles dealt as usual)
+     * @param turnCounter The turn id associated with the player.
+     */
+    public CitiesGame(GameVersions gameVersion, int turnCounter) {
+        super(gameVersion, -1, turnCounter);
+        if (gameVersion != GameVersions.BASE_ORIENT_CITIES && gameVersion != GameVersions.BASE_ORIENT_CITIES_NOBLES) {
+            throw new IllegalArgumentException("Not a Cities game version: " + gameVersion);
+        }
     }
 
     /**
@@ -45,6 +58,16 @@ public class CitiesGame extends OrientGame {
      */
     public void setCityCardsResource(String resource) {
         this.cityCardsResource = resource;
+    }
+
+    /**
+     * Nobles are only dealt in the BASE_ORIENT_CITIES_NOBLES variant.
+     *
+     * @return true if nobles are dealt
+     */
+    @Override
+    protected boolean dealsNobles() {
+        return getGameVersion() == GameVersions.BASE_ORIENT_CITIES_NOBLES;
     }
 
     /**
