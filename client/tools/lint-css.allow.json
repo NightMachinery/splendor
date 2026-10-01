@@ -1,0 +1,52 @@
+{
+  "$comment": [
+    "Legacy files that tools/lint-css.mjs lets break the listed rules until their owner converts them.",
+    "Remove a file's entry (or a rule from it) in the commit that converts it; the lint warns about entries that",
+    "no longer match anything, and --strict turns those warnings into errors. \"*\" means every rule and is only",
+    "for files that are permanently out of scope. Owners are the UX spec's work packages (docs/ui/foundations.md)."
+  ],
+  "files": {
+    "src/components/History.astro": { "owner": "WP-HUD", "rules": ["font-family", "z-index"] },
+    "src/components/anime/CardToSlot.astro": { "owner": "WP-FLIGHTS", "rules": ["z-index"] },
+    "src/components/anime/DeckToSlot.astro": { "owner": "WP-FLIGHTS", "rules": ["z-index"] },
+    "src/layouts/Layout.astro": { "owner": "unassigned: an unused Astro starter layout, safe to delete", "rules": ["viewport-meta"] },
+    "src/pages/gameboard.astro": { "owner": "WP-SHELL", "rules": ["viewport-meta"] },
+    "src/pages/gameboard-cities.astro": { "owner": "WP-SHELL", "rules": ["viewport-meta"] },
+    "src/pages/gameboard-tradingposts.astro": { "owner": "WP-SHELL", "rules": ["viewport-meta"] },
+    "src/pages/index.astro": { "owner": "WP-LOBBY", "rules": ["viewport-meta"] },
+    "src/pages/login.astro": { "owner": "WP-LOBBY", "rules": ["viewport-meta"] },
+    "src/pages/lobby.astro": { "owner": "WP-LOBBY", "rules": ["viewport-meta"] },
+    "src/pages/settings.astro": { "owner": "permanent: settings is out of scope", "rules": "*" },
+    "src/pages/adminzone.astro": { "owner": "permanent: adminzone is out of scope", "rules": "*" },
+    "src/styles/settings.css": { "owner": "permanent: settings is out of scope", "rules": "*" },
+    "src/styles/adminzone.css": { "owner": "permanent: adminzone is out of scope", "rules": "*" },
+    "src/styles/gameboard.css": {
+      "owner": "WP-SHELL",
+      "rules": ["font-family", "hover-media", "media-range", "root-overflow", "viewport-height", "z-index"]
+    },
+    "src/styles/gameboard-otherplayers.css": {
+      "owner": "WP-SHELL (deletes it)",
+      "rules": ["font-family", "hover-media", "media-range", "z-index"]
+    },
+    "src/styles/cities/cities-gameboard.css": { "owner": "WP-SHELL (deletes it)", "rules": ["hover-media", "media-range"] },
+    "src/styles/trading-posts/tp-gameboard.css": { "owner": "WP-SHELL (deletes it)", "rules": ["media-range"] },
+    "src/styles/modals.css": {
+      "owner": "WP-SHELL (the range block), then WP-FOLLOW",
+      "rules": ["font-family", "hover-media", "media-range", "viewport-height", "z-index"]
+    },
+    "src/styles/gameover.css": { "owner": "WP-HUD", "rules": ["viewport-height"] },
+    "src/styles/lobby.css": {
+      "owner": "WP-LOBBY",
+      "rules": ["background-fixed", "font-family", "hover-media", "media-range", "viewport-height", "z-index"]
+    },
+    "src/styles/loginstyle.css": {
+      "owner": "WP-LOBBY",
+      "rules": ["background-fixed", "font-family", "hover-media", "viewport-height"]
+    },
+    "src/styles/titleScreen.css": {
+      "owner": "WP-LOBBY",
+      "rules": ["background-fixed", "font-family", "hover-media", "viewport-height"]
+    },
+    "src/styles/transitions.css": { "owner": "WP-LOBBY (the slide transitions are removed)", "rules": ["z-index"] }
+  }
+}

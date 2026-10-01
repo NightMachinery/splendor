@@ -124,3 +124,56 @@ The two favicon links carry `data-sp-icon` (32 or 48) and `data-sp-turn-href`, t
 ### The web manifest
 
 File: `client/public/manifest.webmanifest`, hand-written JSON: name and short name "Splendor", `start_url` `/lobby/`, `scope` `/`, `display` standalone, `orientation` any, `background_color` and `theme_color` #0b1422, a description, and four icons: `icon-192.png` and `icon-512.png` with purpose "any", and `maskable-192.png` and `maskable-512.png` with purpose "maskable".
+
+## The CSS lint
+
+File: `client/tools/lint-css.mjs`, plain Node with no dependencies. Run it from `client/`:
+
+- `node tools/lint-css.mjs` lints everything under `src/` and `public/`: CSS files, the `<style>` blocks of `.astro` and `.html` files, static `style="..."` attributes, and viewport metas. It exits 1 if anything outside the allowlist breaks a rule.
+- `node tools/lint-css.mjs FILE...` lints only the named files.
+- `--self-test` runs every rule against built-in fixtures and also checks the real `tokens.css` contrast. It exits 1 if any fixture is flagged differently than expected.
+- `--contrast` prints the contrast probe (see below).
+- `--summary` adds per-file counts, including findings the allowlist suppresses, which is the quickest way to see what a legacy file still has to fix.
+- `--rules` lists the rules. `--verbose` prints the suppressed findings too. `--strict` turns stale allowlist entries into errors.
+
+The intended package scripts are `"lint:css": "node tools/lint-css.mjs"` and a `--self-test` run in CI; until they land in `package.json`, call the script directly.
+
+### Rules
+
+Each rule enforces part of section 4 of the UX spec, with the id that findings print:
+
+- `media-range`: no range syntax such as `(width <= 700px)` (iOS Safari before 16.4 ignores the whole block).
+- `media-contract`: a query that uses orientation, height, hover, pointer, reduced motion or aspect ratio must be one of the section 0 strings exactly, and a width-only query at a layout threshold (700, 1024 or 1600px, give or take 1px) is rejected because it is a layout class missing its height condition. Other width switches, such as `(min-width: 400px)`, and `print` are fine.
+- `at-layer`: no `@layer` and no `@import ... layer()`.
+- `nesting`: no nested rules, no `&` and no `@nest`.
+- `color-mix`: no `color-mix()`.
+- `z-index`: a `z-index` is `var(--z-*)`, `auto` or a global keyword. A `calc()` offset from a token is a raw number too: add a rung to the ladder instead.
+- `viewport-height`: no `100vh`, `100dvh`, `100svh` or `100lvh`; use `var(--sp-vh)`.
+- `safe-area`: no `env(safe-area-inset-*)`; use `var(--sp-safe-t)` and its siblings.
+- `background-fixed`: no `background-attachment: fixed`, also not in the `background` shorthand. Draw a fixed `::before` layer instead.
+- `root-overflow`: no `overflow-x: hidden` or `clip` on `html`, `:root` or `body`, nor the `overflow` shorthand with those values. The clip hides horizontal overflow from the layout probes.
+- `fixed-ancestor`: `html`, `body`, `:root`, `#game-elements` (or `.game-elements`), `.board-container` and `#board` (or `.board`) never get `transform`, `translate`, `rotate`, `scale`, `filter`, `backdrop-filter`, `perspective`, `contain`, `will-change`, `container` or `content-visibility` with a value other than the neutral one. Any of those would make the element the containing block of the fixed bank inside it. The rule looks at the subject of the selector, so `body .board-tokens` and `body::before` are fine.
+- `hover-media`: every `:hover` selector sits inside `@media (hover: hover) and (pointer: fine)`, so nothing depends on hover and touch screens never get stuck hover states.
+- `font-family`: `font-family` and the `font` shorthand use `var(--sp-font-*)` (or a global keyword). Descriptors inside `@font-face` are exempt.
+- `viewport-meta`: a viewport meta reads exactly `width=device-width, initial-scale=1, viewport-fit=cover`, and a page under `src/pages/` that has an `<html>` element has a viewport meta or renders `<BaseHead />`.
+- `contrast`: the required pairs of the contrast probe hold (only checked on `tokens.css`).
+- `parse`: the CSS parses (balanced braces, closed comments and strings, no stray text).
+
+`tokens.css` is exempt from `z-index`, `viewport-height` and `safe-area`, because it is where those raw values are meant to live.
+
+### The allowlist
+
+File: `client/tools/lint-css.allow.json`. It lists each legacy file that does not pass yet, its owner (the work package that converts or deletes it) and the rules it may still break. `"rules": "*"` is used only for the settings and admin zone pages and styles, which are permanently out of scope. When you convert a file, remove its entry (or the rules it no longer breaks) in the same commit. The lint prints a warning for an entry that no longer matches anything, such as a deleted file or a rule the file stopped breaking, and `--strict` fails on it.
+
+When the lint was added, 24 legacy files broke 117 rule instances between them, so every entry starts with exactly the rules that file broke. A converted file is then held to every rule, and an unconverted one cannot pick up a new kind of violation unnoticed.
+
+### The contrast probe
+
+`node tools/lint-css.mjs --contrast` reads the colour tokens from the top-level `:root` rules of `tokens.css` (following `var()` references and blending `rgba()` over the background) and prints WCAG contrast ratios in two groups:
+
+- **Required**, which fail the lint: every text token (`--sp-text`, `--sp-text-muted`, `--sp-gold`, `--sp-ok`, `--sp-warn`, `--sp-danger`) at 4.5:1 or more on `--sp-bg`, `--sp-surface-1` and `--sp-surface-2`; gold ink on gold (the primary button) and text on `--sp-final` (the final-round pill) at 4.5:1; and the focus ring at 3:1 on all three backgrounds. With the current values the lowest text pair is `--sp-danger` on `--sp-surface-2` at 5.05:1.
+- **Advisory**, reported only: the numeral ink on each gem colour at 4.5:1, and each gem colour against `--sp-bg` and `--sp-surface-1` at the 3:1 non-text threshold.
+
+Three advisory pairs fall short with the spec's palette: white numerals on Green are 3.41:1 (dark ink would give about 5.3:1), and Brown is 2.39:1 on `--sp-bg` and 2.10:1 on `--sp-surface-1`, so a brown gem outline is faint on the dark surfaces. The gem's own shape still identifies it, and its pile or pip carries the colour; the values follow the spec until its owner decides otherwise.
+
+The probe's numbers were cross-checked in headless Chromium: all 18 required text pairs, resolved there through `getComputedStyle`, match the lint within 0.01.
