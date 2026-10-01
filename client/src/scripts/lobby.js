@@ -173,7 +173,9 @@ document.addEventListener("DOMContentLoaded", () => {
         createBtn.disabled = true;
 
         createNewSession(gameVersion)
-            .catch((err) => showError(err.toString()))
+            .catch((err) => {
+                if(!(err && err.authRejected)) showError(actionErrorText("Creating the session", err));
+            })
             .finally(() => createBtn.disabled = false);
     }
 
