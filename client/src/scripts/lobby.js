@@ -424,6 +424,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 throw new Error("Session list reply has an unexpected shape.");
             }
             updateAvailableSessions(data);
+            // e2e test hook (stable contract): the session list has rendered once
+            document.body.dataset.splendorLobbyReady = "1";
         },
     });
     sessionsPoll.start();

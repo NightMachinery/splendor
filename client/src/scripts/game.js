@@ -443,6 +443,29 @@ const renderGameState = (data, hash) => {
     }
 
     renderedState = data;
+    setBoardTestHooks(data, hash);
+};
+
+/**
+ * End-to-end test hooks, set on document.body after every successful render.
+ * Stable contract (see docs/client-architecture.md):
+ * - data-splendor-ready="1" once the board has rendered a state;
+ * - data-splendor-turn: username of the player whose turn it is, "" when the
+ *   game is over or no current player is known;
+ * - data-splendor-state-hash: MD5 of the last rendered state (the exact GS body);
+ * - data-splendor-game-over="1" when the game is over (absent otherwise).
+ */
+const setBoardTestHooks = (data, hash) => {
+    const hooks = document.body.dataset;
+    const currentPlayer = data.players[data.turnCounter];
+    hooks.splendorTurn = !data.gameOver && currentPlayer ? currentPlayer.name : "";
+    hooks.splendorStateHash = hash;
+    if(data.gameOver) {
+        hooks.splendorGameOver = "1";
+    } else {
+        delete hooks.splendorGameOver;
+    }
+    hooks.splendorReady = "1";
 };
 
 // Errors worth a toast (not connection blips, which show the indicator).
