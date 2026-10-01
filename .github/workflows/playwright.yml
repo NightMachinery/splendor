@@ -1,18 +1,22 @@
 name: Frontend Tests
+
+# Client tests, all offline (see docs/testing.md):
+# - node:test unit tests of the bot, rules checks, rules mirror and API client;
+# - the mocked Playwright suite (pnpm test), LS and GS stubbed by page.route;
+# - the full-stack specs against the engine-backed fake stack (test:e2e:fake).
+# Nothing here talks to a real Lobby Service or Game Service.
+
 on:
   push:
     branches: [master]
     paths:
-      - 'server/**'
       - 'client/**'
-      - 'linters/**'
-      - '.github/**'
-
+      - '.github/workflows/playwright.yml'
   pull_request:
     branches: [master]
     paths:
       - 'client/**'
-      - '.github/**'
+      - '.github/workflows/playwright.yml'
 
 jobs:
   test:
@@ -22,13 +26,61 @@ jobs:
       run:
         working-directory: ./client
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-node@v3
-      with:
-        node-version: 16
-    - name: Install dependencies
-      run: npm ci
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: npx playwright test
+      - uses: actions/checkout@v4
+
+      # The pnpm version comes from "packageManager" in client/package.json.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: client/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Unit tests (node:test)
+        run: pnpm run test:unit
+
+      # Chromium only: these results are verified. Known layout debt shows as
+      # expected failures, not errors. Each run gets its own report and
+      # results folder, so a later step does not overwrite an earlier one's.
+      - name: Mocked browser tests (Chromium)
+        run: pnpm test --output=test-results/mocked
+        env:
+          PW_WEBKIT: '0'
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/mocked
+
+      - name: Full-stack specs on the fake stack (Chromium)
+        if: ${{ !cancelled() }}
+        run: pnpm run test:e2e:fake --output=test-results/e2e-fake
+        env:
+          PW_WEBKIT: '0'
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/e2e-fake
+
+      # WebKit has not been verified yet (the macOS 14 build crashes on
+      # launch), so its results are reported but do not fail the job. Drop
+      # continue-on-error once a run is green.
+      - name: Mocked browser tests (WebKit, informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: pnpm exec playwright test --project=mocked-mobile-webkit --output=test-results/webkit
+        env:
+          PW_WEBKIT: '1'
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/webkit
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: |
+            client/playwright-report/
+            client/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
