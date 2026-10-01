@@ -69,16 +69,18 @@ public class GameSaveRestController {
 
             // we get the token username for setting the game save creators name
             String username = this.authentication.getNameFromToken(token);
-            if (this.authentication.getNameFromToken(token).isEmpty()) {
+            if (username == null || username.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Not logged in.");
             }
 
-            if (gameSession.getGame().isGameOver()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("You cannot save a game that has ended.");
+            // any logged in user may save a session (existing behaviour); the lock keeps the snapshot consistent
+            String gameSaveId;
+            synchronized (gameSession) {
+                if (gameSession.getGame().isGameOver()) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("You cannot save a game that has ended.");
+                }
+                gameSaveId = this.gameSavesManager.createGameSave(bodyData.trim(), username, gameSession.getGame());
             }
-
-            // should be ok
-            String gameSaveId = this.gameSavesManager.createGameSave(bodyData.trim(), username, gameSession.getGame());
             if (gameSaveId.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("");
             }

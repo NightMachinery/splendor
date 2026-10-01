@@ -10,16 +10,18 @@ import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
 import ca.hexanome04.splendorgame.model.gameversions.GameVersions;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import dev.dacbiet.simpoll.ContentWatcher;
 import dev.dacbiet.simpoll.Fetcher;
 import dev.dacbiet.simpoll.ResultGenerator;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,7 +71,39 @@ public class SplendorRestController {
         this.gameSavesManager = gameSavesManager;
         this.gameServiceName = gameServiceName;
         this.longPollTimeout = longPollTimeout;
-        this.gameWatcher = new HashMap<>();
+        this.gameWatcher = new ConcurrentHashMap<>();
+    }
+
+    /**
+     * Replace the initializer (used by tests that cannot reach a lobby service).
+     *
+     * @param initializer initializer to use for lobby service calls
+     */
+    void setInitializer(Initializer initializer) {
+        this.initializer = initializer;
+    }
+
+    private ContentWatcher watcherFor(String sessionId) {
+        return gameWatcher.computeIfAbsent(sessionId, id -> new ContentWatcher());
+    }
+
+    private static JsonObject parseActionBody(String bodyData) {
+        if (bodyData == null || bodyData.isBlank()) {
+            return new JsonObject();
+        }
+        JsonElement element;
+        try {
+            element = JsonParser.parseString(bodyData);
+        } catch (JsonParseException e) {
+            throw new SplendorException("The request body is not valid JSON.");
+        }
+        if (element.isJsonNull()) {
+            return new JsonObject();
+        }
+        if (!element.isJsonObject()) {
+            throw new SplendorException("The request body must be a JSON object.");
+        }
+        return element.getAsJsonObject();
     }
 
     /**
@@ -142,9 +176,13 @@ public class SplendorRestController {
      * @throws Exception thrown due to IO or invalid information given
      */
     protected void addSession(String sessionId, LaunchSessionInfo launchSessionInfo, GameVersions gameVersion) throws Exception {
-        if (!launchSessionInfo.savegame().isEmpty()) {
+        if (launchSessionInfo.players() == null) {
+            throw new SplendorException("Missing players in launch session info.");
+        }
+        String savegame = launchSessionInfo.savegame() == null ? "" : launchSessionInfo.savegame();
+        if (!savegame.isEmpty()) {
             // retrieve game state from save data
-            Game game = gameSavesManager.getGameSaveData(launchSessionInfo.savegame());
+            Game game = gameSavesManager.getGameSaveData(savegame);
             if (game == null) {
                 logger.warn("Error while launching session: Retrieved game save state is null!");
                 throw new SplendorException("Unable to load previous game save state!");
@@ -153,7 +191,7 @@ public class SplendorRestController {
         } else {
             sessionManager.createNewSession(sessionId, launchSessionInfo.players(),
                     launchSessionInfo.creator(),
-                    launchSessionInfo.savegame(),
+                    savegame,
                     gameVersion);
         }
         logger.info("Launched new game session: " + sessionId);
@@ -176,9 +214,13 @@ public class SplendorRestController {
                 throw new SplendorException("There is no session associated this session ID: " + sessionId + ".");
             }
 
-            ContentWatcher watcher = gameWatcher.get(sessionId);
-            // serialize game
-            Fetcher fetcher = () -> SplendorTypeAdapter.newClientGson().toJson(game.getGame());
+            ContentWatcher watcher = watcherFor(sessionId);
+            // serialize game (under the session lock, so that an action cannot change it halfway)
+            Fetcher fetcher = () -> {
+                synchronized (game) {
+                    return SplendorTypeAdapter.newClientGson().toJson(game.getGame());
+                }
+            };
 
             return ResultGenerator.getStringResult(watcher, fetcher, hash, this.longPollTimeout);
         } catch (SplendorException e) {
@@ -208,8 +250,11 @@ public class SplendorRestController {
                 throw new SplendorException("There is no session associated this session ID: " + sessionId + ".");
             }
 
-            String serializedPlayers = SplendorTypeAdapter.newClientGson()
-                    .toJson(sessionManager.getGameSession(sessionId).getGame().getPlayers());
+            GameSession session = sessionManager.getGameSession(sessionId);
+            String serializedPlayers;
+            synchronized (session) {
+                serializedPlayers = SplendorTypeAdapter.newClientGson().toJson(session.getGame().getPlayers());
+            }
             return ResponseEntity.status(HttpStatus.OK).body(serializedPlayers);
         } catch (SplendorException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
@@ -232,27 +277,36 @@ public class SplendorRestController {
     public ResponseEntity getActions(@PathVariable String sessionId, @PathVariable String playerName) {
         try {
             // Check if session exists
-            if (sessionManager.getGameSession(sessionId) == null) {
+            GameSession session = sessionManager.getGameSession(sessionId);
+            if (session == null) {
                 throw new SplendorException("There is no session associated this session ID: " + sessionId + ".");
             }
-            // Check if player exists
-            Game game = sessionManager.getGameSession(sessionId).getGame();
-            Player player = game.getPlayerFromName(playerName);
-            if (player == null) {
-                throw new SplendorException("The specified player does not exist in this session.");
-            }
+            String serializedActions;
+            synchronized (session) {
+                // Check if player exists
+                Game game = session.getGame();
+                Player player = game.getPlayerFromName(playerName);
+                if (player == null) {
+                    throw new SplendorException("The specified player does not exist in this session.");
+                }
 
-            if (!player.getName().equals(game.getTurnCurrentPlayer().getName())) {
-                throw new SplendorException("This player has no valid actions because it is not their turn.");
-            }
+                // nobody has anything left to do once the game is over
+                if (game.isGameOver()) {
+                    return ResponseEntity.status(HttpStatus.OK).body("[]");
+                }
 
-            // If so, serialize actions and place it as body in a ResponseEntity
-            String[] actions = new String[game.getCurValidActions().size()];
-            for (int i = 0; i < game.getCurValidActions().size(); i++) {
-                actions[i] = game.getCurValidActions().get(i).toString();
-            }
+                Player current = game.getTurnCurrentPlayer();
+                if (current == null || !player.getName().equals(current.getName())) {
+                    throw new SplendorException("This player has no valid actions because it is not their turn.");
+                }
 
-            String serializedActions = SplendorTypeAdapter.newClientGson().toJson(actions);
+                // If so, serialize actions and place it as body in a ResponseEntity
+                List<String> actions = new ArrayList<>();
+                for (Actions action : game.getCurValidActions()) {
+                    actions.add(action.toString());
+                }
+                serializedActions = SplendorTypeAdapter.newClientGson().toJson(actions);
+            }
             return ResponseEntity.status(HttpStatus.OK).body(serializedActions);
         } catch (SplendorException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
@@ -282,57 +336,62 @@ public class SplendorRestController {
                                             @RequestBody String bodyData) {
 
         try {
-            if (sessionManager.getGameSession(sessionId) == null) {
+            GameSession session = sessionManager.getGameSession(sessionId);
+            if (session == null) {
                 throw new SplendorException("There is no session associated this session ID: " + sessionId + ".");
             }
-            Game game = sessionManager.getGameSession(sessionId).getGame();
-            Player player = game.getPlayerFromName(playerName);
-
-            if (player == null) {
+            if (session.getGame().getPlayerFromName(playerName) == null) {
                 throw new SplendorException("The specified player does not exist in this session.");
             }
 
-            if (!auth.getNameFromToken(token).equals(playerName)) {
+            // checked outside the session lock: it is a network call to the lobby service
+            if (token == null || token.isEmpty() || !playerName.equals(auth.getNameFromToken(token))) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token does not match requested players name.");
             }
 
-            List<Actions> validActions = game.getCurValidActions();
+            JsonObject jobj = parseActionBody(bodyData);
 
-            if (!validActions.contains(actionIdentifier)) {
-                throw new SplendorException("Given action is not valid: " + actionIdentifier);
+            boolean gameEnded;
+            synchronized (session) {
+                Game game = session.getGame();
+                if (game.isGameOver()) {
+                    throw new SplendorException(ActionResult.GAME_OVER.getDescription());
+                }
+                if (!game.getCurValidActions().contains(actionIdentifier)) {
+                    throw new SplendorException("Given action is not valid: " + actionIdentifier);
+                }
+
+                logger.info("Valid actions BEFORE turn: " + game.getCurValidActions());
+
+                ArrayList<ActionResult> actionResult =
+                        game.takeAction(playerName, ActionDecoder.createAction(actionIdentifier.toString(), jobj));
+
+                if (!actionResult.contains(ActionResult.VALID_ACTION)) {
+                    // Only errors end up here: results that require a follow-up action come with VALID_ACTION.
+                    Optional<ActionResult> result = actionResult.stream()
+                            .filter(ar -> ar != ActionResult.TURN_COMPLETED)
+                            .findFirst();
+                    if (result.isPresent() && !result.get().getDescription().isEmpty()) {
+                        throw new SplendorException(result.get().getDescription());
+                    } else {
+                        throw new SplendorException("Invalid action performed.");
+                    }
+                }
+
+                logger.info("Valid actions AFTER turn:  " + game.getCurValidActions() + "\n");
+                gameEnded = game.isGameOver();
             }
 
-            JsonObject jobj = JsonParser.parseString(bodyData).getAsJsonObject();
+            // mark that the game state has changed, before the (slow, fallible) lobby service call
+            watcherFor(sessionId).markDirty();
 
-            logger.info("Valid actions BEFORE turn: " + game.getCurValidActions());
-
-            ArrayList<ActionResult> actionResult =
-                    game.takeAction(playerName, ActionDecoder.createAction(actionIdentifier.toString(), jobj));
-
-            if (game.isGameOver()) {
-                initializer.deleteGameSession(sessionId);
-            }
-
-            if (!actionResult.contains(ActionResult.VALID_ACTION)) {
-                // This should technically only have the ones that are errors,
-                // not the ones that are because they need to do an extra action.
-                // (Since, the ones that require an additional action have VALID_ACTION)
-                Optional<ActionResult> result = actionResult.stream()
-                        .filter(ar -> ar != ActionResult.TURN_COMPLETED) // idk if necessary
-                        .findFirst();
-                if (result.isPresent() && !result.get().getDescription().isEmpty()) {
-                    String desc = result.get().getDescription();
-                    throw new SplendorException(desc);
-                } else {
-                    throw new SplendorException("Invalid action performed.");
+            if (gameEnded) {
+                try {
+                    initializer.deleteGameSession(sessionId);
+                } catch (Exception e) {
+                    logger.warn("Game " + sessionId + " ended, but the lobby service session could not be deleted: ", e);
                 }
             }
-
-            logger.info("Valid actions AFTER turn:  " + game.getCurValidActions() + "\n");
-
-            // TODO: return what further actions are needed (if any)
-            // mark that the game state has changed
-            gameWatcher.get(sessionId).markDirty();
             return ResponseEntity.status(HttpStatus.OK).body("");
         } catch (SplendorException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
@@ -363,27 +422,30 @@ public class SplendorRestController {
             GameSession gameSession = sessionManager.getGameSession(sessionId);
             String creatorName = gameSession.getCreatorUsername();
 
-            if (!auth.getNameFromToken(token).equals(creatorName)) {
+            if (token == null || token.isEmpty() || creatorName == null
+                    || !creatorName.equals(auth.getNameFromToken(token))) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body("Only the creator of the game can restart the game.");
             }
 
             // username matches, maybe we add a vote to restart in the future?
             // recreate all info to launch a game
-            GameVersions gameVersion = gameSession.getGame().getGameVersion();
+            synchronized (gameSession) {
+                GameVersions gameVersion = gameSession.getGame().getGameVersion();
 
-            List<PlayerInfo> playersInfo = new ArrayList<>();
-            for (Player p : gameSession.getGame().getPlayers()) {
-                playersInfo.add(new PlayerInfo(p.getName(), p.getColour()));
+                List<PlayerInfo> playersInfo = new ArrayList<>();
+                for (Player p : gameSession.getGame().getPlayers()) {
+                    playersInfo.add(new PlayerInfo(p.getName(), p.getColour()));
+                }
+
+                Game newGame = sessionManager.launchNewGame(gameVersion, playersInfo);
+                gameSession.setGame(newGame);
             }
-
-            Game newGame = sessionManager.launchNewGame(gameVersion, playersInfo);
-            gameSession.setGame(newGame);
 
             logger.info("Restarted game session: " + sessionId);
 
             // game has updated
-            gameWatcher.get(sessionId).markDirty();
+            watcherFor(sessionId).markDirty();
 
             return ResponseEntity.status(HttpStatus.OK).body("");
         } catch (SplendorException e) {

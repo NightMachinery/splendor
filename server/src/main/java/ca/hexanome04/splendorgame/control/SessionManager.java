@@ -7,6 +7,7 @@ import ca.hexanome04.splendorgame.model.gameversions.cities.CitiesGame;
 import ca.hexanome04.splendorgame.model.gameversions.orient.OrientGame;
 import ca.hexanome04.splendorgame.model.gameversions.tradingposts.TradingPostsGame;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
@@ -25,7 +26,7 @@ public class SessionManager {
      */
     @Autowired
     public SessionManager() {
-        this.gameSessions = new HashMap<>();
+        this.gameSessions = new ConcurrentHashMap<>();
     }
 
     /**
@@ -35,7 +36,7 @@ public class SessionManager {
      * @return game session or null (if game session is not found)
      */
     public @Nullable GameSession getGameSession(String sessionId) {
-        if (!this.gameSessions.containsKey(sessionId)) {
+        if (sessionId == null) {
             return null;
         }
         return this.gameSessions.get(sessionId);
@@ -61,17 +62,13 @@ public class SessionManager {
      * @return game session instance
      * @throws SplendorException if issue occurred
      */
-    public GameSession createNewSession(String sessionId, List<PlayerInfo> players,
+    public synchronized GameSession createNewSession(String sessionId, List<PlayerInfo> players,
                                         String creatorName, String sessionName,
                                         GameVersions version) throws SplendorException {
-        // Refuse creation if session with this ID already exists
-        if (gameSessions.containsKey(sessionId)) {
-            throw new SplendorException("Game can not be created, the requested ID " + sessionId
-                    + " is already in use.");
-        }
-        // Refuse creation if incorrect number of players in session
-        if (players.size() < 2 || players.size() > 4) {
-            throw new SplendorException("Game can not be created, 2-4 players required");
+        checkSessionId(sessionId);
+        checkPlayers(players);
+        if (version == null) {
+            throw new SplendorException("Game can not be created, unknown game version.");
         }
 
         GameSession session = new GameSession(sessionId, creatorName, sessionName);
@@ -90,17 +87,10 @@ public class SessionManager {
      * @return new game session
      * @throws SplendorException if issue occurred
      */
-    public GameSession createSession(String sessionId, Game game,
+    public synchronized GameSession createSession(String sessionId, Game game,
                                      LaunchSessionInfo launchSessionInfo) throws SplendorException {
-        // Refuse creation if session with this ID already exists
-        if (gameSessions.containsKey(sessionId)) {
-            throw new SplendorException("Game can not be created, the requested ID " + sessionId
-                    + " is already in use.");
-        }
-        // Refuse creation if incorrect number of players in session
-        if (launchSessionInfo.players().size() < 2 || launchSessionInfo.players().size() > 4) {
-            throw new SplendorException("Game can not be created, 2-4 players required");
-        }
+        checkSessionId(sessionId);
+        checkPlayers(launchSessionInfo.players());
 
         List<Player> curPlayers = game.getPlayers();
 
@@ -176,5 +166,31 @@ public class SessionManager {
         return game;
     }
 
+    private void checkSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new SplendorException("Game can not be created, missing session id.");
+        }
+        // Refuse creation if session with this ID already exists
+        if (gameSessions.containsKey(sessionId)) {
+            throw new SplendorException("Game can not be created, the requested ID " + sessionId
+                    + " is already in use.");
+        }
+    }
+
+    private static void checkPlayers(List<PlayerInfo> players) {
+        // Refuse creation if incorrect number of players in session
+        if (players == null || players.size() < 2 || players.size() > 4) {
+            throw new SplendorException("Game can not be created, 2-4 players required");
+        }
+        Set<String> names = new HashSet<>();
+        for (PlayerInfo p : players) {
+            if (p == null || p.name() == null || p.name().isBlank()) {
+                throw new SplendorException("Game can not be created, every player needs a name.");
+            }
+            if (!names.add(p.name())) {
+                throw new SplendorException("Game can not be created, player '" + p.name() + "' appears twice.");
+            }
+        }
+    }
 
 }
