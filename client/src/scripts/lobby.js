@@ -1,4 +1,4 @@
-import { SETTINGS, GAME_VERSION_TO_BOARD, createLongPoll } from "./settings.js";
+import { SETTINGS, boardPathForVersion, createLongPoll } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
@@ -190,10 +190,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     const playSession = (elm, sesId, gameVer) => {
+        let boardPath;
+        try {
+            boardPath = boardPathForVersion(gameVer);
+        } catch(err) {
+            showError(err.message);
+            return;
+        }
         elm.disabled = true;
 
         SETTINGS.verifyCredentials().then(() => {
-            window.location.href = `/${GAME_VERSION_TO_BOARD[gameVer]}/?sessionId=${sesId}`
+            window.location.href = `${boardPath}?sessionId=${encodeURIComponent(sesId)}`;
+        }).catch((err) => {
+            if(!(err && err.authRejected)) showError(actionErrorText("Opening the game", err));
         }).finally(() => elm.disabled = false);
     };
 
@@ -249,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const actions = document.createElement("div");
             actions.className = "session-player-actions";
             renderModerationActions(actions, ses, sessionId, player, {
-                buildMigrateLink: (migrate) => `${window.location.origin}/${GAME_VERSION_TO_BOARD[version]}/?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`
+                buildMigrateLink: (migrate) => `${window.location.origin}${boardPathForVersion(version)}?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`
             });
             item.appendChild(actions);
             list.appendChild(item);

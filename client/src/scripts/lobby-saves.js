@@ -44,11 +44,17 @@ const getGameSaveForVersion = async (gameVersion) => {
     const url = new URL(`${SETTINGS.getLS_API()}/api/gameservices/splendor_${gameVersion}/savegames`);
     url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
 
-    const resp = await fetch(url);
-    if(!resp.ok) { // ignore errors
+    try {
+        const resp = await fetch(url);
+        if(!resp.ok) { // ignore errors (e.g. a version this server does not register)
+            return [];
+        }
+        const saves = await resp.json();
+        return Array.isArray(saves) ? saves : [];
+    } catch(err) {
+        console.warn(`Could not list saved games for ${gameVersion}: ${err}`);
         return [];
     }
-    return await resp.json();
 };
 
 /**
@@ -123,11 +129,9 @@ const updateGameSaveInfo = async () => {
     await SETTINGS.verifyCredentials();
     const username = SETTINGS.getUsername();
 
-    let gameSavesLS = [];
-    for(const gv of Object.keys(GAME_VERSION_TO_BOARD)) {
-        const gvGameSaves = await getGameSaveForVersion(gv);
-        gameSavesLS = [...gameSavesLS, ...gvGameSaves];
-    }
+    // one request per known version, in parallel
+    const perVersion = await Promise.all(Object.keys(GAME_VERSION_TO_BOARD).map(getGameSaveForVersion));
+    const gameSavesLS = perVersion.flat();
 
     const gameSavesInfo = {};
     // go through each item in list and make entry with save id as key

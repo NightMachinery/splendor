@@ -397,11 +397,44 @@ export const SETTINGS = {
 
 /**
  * Maps the game version enum from the backend to the corresponding board.
+ * The keys are also the versions whose saved games the lobby lists.
  */
 export const GAME_VERSION_TO_BOARD = {
     "BASE_ORIENT": "gameboard",
+    // Cities without nobles: the official module rule and the default
     "BASE_ORIENT_CITIES": "gameboard-cities",
+    // Cities played with nobles as well
+    "BASE_ORIENT_CITIES_NOBLES": "gameboard-cities",
     "BASE_ORIENT_TRADE_ROUTES": "gameboard-tradingposts"
+};
+
+/**
+ * The client has no board for this game version (for example a server that
+ * is newer than the cached client).
+ */
+export class UnknownGameVersionError extends Error {
+    constructor(version) {
+        super(`This client cannot show the game version "${version}". Reload the page to get the latest client.`);
+        this.name = "UnknownGameVersionError";
+        this.version = version;
+    }
+}
+
+/**
+ * Path of the board page for a game version, e.g. "/gameboard-cities/".
+ * Accepts the bare enum name or the LS game-service name ("splendor_<VERSION>").
+ *
+ * @param {string} version
+ * @returns {string}
+ * @throws {UnknownGameVersionError} instead of producing "/undefined/"
+ */
+export const boardPathForVersion = (version) => {
+    const key = String(version || "").replace(/^splendor_/, "");
+    const board = Object.prototype.hasOwnProperty.call(GAME_VERSION_TO_BOARD, key) ? GAME_VERSION_TO_BOARD[key] : null;
+    if(!board) {
+        throw new UnknownGameVersionError(key || String(version));
+    }
+    return `/${board}/`;
 };
 
 /* ------------------------------------------------------------------------ *
