@@ -4,6 +4,7 @@
 package eu.kartoffelquadrat.ls.accountmanager.config;
 
 import eu.kartoffelquadrat.ls.accountmanager.controller.AuthTokenService;
+import eu.kartoffelquadrat.ls.accountmanager.controller.RoomTokenService;
 import eu.kartoffelquadrat.ls.accountmanager.model.Player;
 import java.util.Collections;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,9 @@ public class ResourceServerConfiguration extends ResourceServerConfigurerAdapter
     @Autowired
     private AuthTokenService authTokenService;
 
+    @Autowired
+    private RoomTokenService roomTokenService;
+
     @Override
     public void configure(ResourceServerSecurityConfigurer resources) {
         resources.resourceId(RESOURCE_ID).stateless(false).tokenServices(selfHostAwareTokenServices());
@@ -48,13 +52,17 @@ public class ResourceServerConfiguration extends ResourceServerConfigurerAdapter
             public OAuth2Authentication loadAuthentication(String accessToken) {
                 Player player = authTokenService.resolve(accessToken);
                 if (player != null) {
-                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority(player.getRole().toString());
-                    UsernamePasswordAuthenticationToken userAuth = new UsernamePasswordAuthenticationToken(
-                            player.getName(), accessToken, Collections.singletonList(authority));
-                    OAuth2Request request = new OAuth2Request(Collections.emptyMap(), "self-host",
-                            Collections.singletonList(authority), true, Collections.emptySet(),
-                            Collections.singleton(RESOURCE_ID), null, Collections.emptySet(), Collections.emptyMap());
-                    return new OAuth2Authentication(request, userAuth);
+                    return selfHostAuthentication(player.getName(), player.getRole().toString(), accessToken);
+                }
+                // Room (migrate) tokens. Without this branch the filter rejected them with 401 before any
+                // controller ran, so migrated tabs could not even resolve their username. They get
+                // ROLE_ROOM, which no role-protected endpoint accepts, and a principal name that can never
+                // equal a real username; controllers resolve them to the user only for their own room
+                // (TokenController.nameFromToken(token, sessionId)).
+                String roomUser = roomTokenService.username(accessToken);
+                if (!roomUser.isEmpty()) {
+                    return selfHostAuthentication(RoomTokenService.PRINCIPAL_PREFIX + roomUser,
+                            RoomTokenService.ROOM_AUTHORITY, accessToken);
                 }
                 OAuth2Authentication authentication = tokenStore.readAuthentication(accessToken);
                 if (authentication == null) {
@@ -68,6 +76,16 @@ public class ResourceServerConfiguration extends ResourceServerConfigurerAdapter
                 return tokenStore.readAccessToken(accessToken);
             }
         };
+    }
+
+    private static OAuth2Authentication selfHostAuthentication(String principal, String role, String accessToken) {
+        SimpleGrantedAuthority authority = new SimpleGrantedAuthority(role);
+        UsernamePasswordAuthenticationToken userAuth = new UsernamePasswordAuthenticationToken(
+                principal, accessToken, Collections.singletonList(authority));
+        OAuth2Request request = new OAuth2Request(Collections.emptyMap(), "self-host",
+                Collections.singletonList(authority), true, Collections.emptySet(),
+                Collections.singleton(RESOURCE_ID), null, Collections.emptySet(), Collections.emptyMap());
+        return new OAuth2Authentication(request, userAuth);
     }
 
     /**

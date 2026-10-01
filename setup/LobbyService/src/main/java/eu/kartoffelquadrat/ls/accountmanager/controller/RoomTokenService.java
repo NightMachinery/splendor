@@ -8,6 +8,10 @@ import org.springframework.stereotype.Service;
 /** Room-scoped migrate tokens that do not expose the user's primary auth token. */
 @Service
 public class RoomTokenService {
+    /** Authority of a room token in the security context. No @PreAuthorize role check accepts it. */
+    public static final String ROOM_AUTHORITY = "ROLE_ROOM";
+    /** Principal name prefix for room tokens; ':' never occurs in a username, so it never matches one. */
+    public static final String PRINCIPAL_PREFIX = "room:";
     private static final SecureRandom RNG = new SecureRandom();
     private final Map<String, RoomIdentity> identities = new ConcurrentHashMap<>();
 

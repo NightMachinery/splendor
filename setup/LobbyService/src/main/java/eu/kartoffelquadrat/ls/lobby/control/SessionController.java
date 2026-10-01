@@ -186,8 +186,8 @@ public class SessionController {
         }
         Session session = sessions.getSessionById(sessionid);
         session.updateTempMods();
-        String actor = tokenController.nameFromToken(token);
-        if (!actor.equals(player) && !session.isMod(actor)) {
+        String actor = tokenController.nameFromToken(token, sessionid);
+        if (actor.isEmpty() || (!actor.equals(player) && !session.isMod(actor))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Only mods can copy another player's migrate link.");
         }
         if (!session.getPlayers().contains(player)) {
@@ -206,7 +206,14 @@ public class SessionController {
         if (!player.isPresent()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Migrated user no longer exists.");
         }
-        return ResponseEntity.status(HttpStatus.OK).body(player.get());
+        // Only public fields. The Player entity also holds the primary auth token and the bcrypt
+        // password, and this endpoint needs no authentication beyond knowing the room token.
+        Map<String, String> identity = new LinkedHashMap<>();
+        identity.put("name", player.get().getName());
+        identity.put("displayName", player.get().getDisplayName() == null || player.get().getDisplayName().trim().isEmpty()
+                ? player.get().getName() : player.get().getDisplayName());
+        identity.put("preferredColour", player.get().getPreferredColour());
+        return ResponseEntity.status(HttpStatus.OK).body(identity);
     }
 
     @PostMapping("/api/sessions/{sessionid}/players/{player}/observer")
@@ -216,8 +223,8 @@ public class SessionController {
         }
         Session session = sessions.getSessionById(sessionid);
         session.updateTempMods();
-        String actor = tokenController.nameFromToken(token);
-        if (!actor.equals(player) && !session.isMod(actor)) {
+        String actor = tokenController.nameFromToken(token, sessionid);
+        if (actor.isEmpty() || (!actor.equals(player) && !session.isMod(actor))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Only mods can change another player observer status.");
         }
         session.setObserver(player, observer);
@@ -233,8 +240,8 @@ public class SessionController {
         }
         Session session = sessions.getSessionById(sessionid);
         session.updateTempMods();
-        String actor = tokenController.nameFromToken(token);
-        if (!session.isMod(actor)) {
+        String actor = tokenController.nameFromToken(token, sessionid);
+        if (actor.isEmpty() || !session.isMod(actor)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Only mods can change mods.");
         }
         if (mod) {

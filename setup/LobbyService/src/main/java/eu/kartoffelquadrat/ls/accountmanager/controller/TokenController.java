@@ -76,13 +76,25 @@ public class TokenController {
         return principal == null ? "" : principal.getName();
     }
 
+    /**
+     * Username behind a primary token (a player's local-auth token, the service token or an OAuth token
+     * known to the DB). Room tokens resolve to "" here, so they cannot reach account endpoints, create
+     * sessions or read the user's details (which include the primary token).
+     */
     public String nameFromToken(String token) {
-        String roomUser = roomTokenService.username(token);
-        if (!roomUser.isEmpty()) {
-            return roomUser;
-        }
         Player player = authTokenService.resolve(token);
         return player == null ? "" : player.getName();
+    }
+
+    /**
+     * Like {@link #nameFromToken(String)}, but a room token also counts, for the one session it was
+     * minted for.
+     */
+    public String nameFromToken(String token, long sessionId) {
+        if (roomTokenService.isForRoom(token, String.valueOf(sessionId))) {
+            return roomTokenService.username(token);
+        }
+        return nameFromToken(token);
     }
 
     public boolean isAdminToken(String token) {
