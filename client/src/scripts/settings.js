@@ -44,6 +44,64 @@ const getRoomId = () => {
 
 const isLoginPage = () => window.location.pathname.replace(/\/+$/, "") === "/login";
 
+/**
+ * The Lobby Service definitively rejected the stored identity (or there is
+ * none). The local identity has been cleared and the login page requested.
+ */
+export class AuthRejectedError extends Error {
+    constructor(message, status = 0) {
+        super(message);
+        this.name = "AuthRejectedError";
+        this.authRejected = true;
+        this.status = status;
+    }
+}
+
+/**
+ * Identity could not be checked right now (network error, 5xx, 429, or an
+ * unreadable reply). Nothing was cleared; retry later.
+ */
+export class TransientAuthError extends Error {
+    constructor(message, status = 0) {
+        super(message);
+        this.name = "TransientAuthError";
+        this.transient = true;
+        this.status = status;
+    }
+}
+
+/**
+ * Whether a failed /api/local-auth reply means "this token is not valid"
+ * rather than "the server is having trouble". Only 401 and 403 qualify, plus
+ * any 4xx whose JSON body is {"error": "unknown_token"} or
+ * {"error": "invalid_token"} (a contract the LS may adopt for unknown tokens).
+ *
+ * @param {number} status
+ * @param {string} bodyText
+ * @returns {boolean}
+ */
+export const isDefinitiveAuthRejection = (status, bodyText = "") => {
+    if(status === 401 || status === 403) return true;
+    if(status < 400 || status >= 500) return false;
+    try {
+        const body = JSON.parse(bodyText);
+        return !!body && (body.error === "unknown_token" || body.error === "invalid_token");
+    } catch(err) {
+        return false;
+    }
+};
+
+/**
+ * fetch() that turns a network failure into a TransientAuthError.
+ */
+const fetchOrTransient = async (url, init) => {
+    try {
+        return await fetch(url, init);
+    } catch(err) {
+        throw new TransientAuthError(`Could not reach the lobby service: ${err && err.message ? err.message : err}`);
+    }
+};
+
 export const SETTINGS = {
 
     /**
@@ -200,55 +258,93 @@ export const SETTINGS = {
     hasLocalIdentity: () => !!localStorage.getItem("displayName"),
 
     /**
-     * Verify that the user is logged in.
-     * Will boot user to login screen if not.
+     * Verify that the user is logged in, creating the local account on the
+     * Lobby Service (LS) if this browser has never registered its token.
+     *
+     * Identity safety: the stored identity is cleared only when the LS
+     * definitively rejects it (see isDefinitiveAuthRejection). Network
+     * errors, 5xx replies (for example Caddy's 502 during a redeploy), 429
+     * and unreadable replies throw a TransientAuthError and keep every stored
+     * key, so a server outage can never replace a user's account.
+     *
+     * @param {{allowCreate?: boolean, displayName?: string}} options
+     *   allowCreate: login page only; register with `displayName` (or
+     *   "Player") when no display name is stored yet. displayName is stored
+     *   only after the LS accepted it.
+     * @returns {Promise<object>} the LS local-auth reply, or the migrate reply
+     * @throws {AuthRejectedError} identity rejected or missing (login page shown)
+     * @throws {TransientAuthError} try again later; nothing was cleared
      */
     verifyCredentials: async (options = {}) => {
-        const { allowCreate = false } = options;
+        const { allowCreate = false, displayName: requestedDisplayName = null } = options;
         const roomToken = getRoomMigrateToken();
         const roomId = getRoomId();
         if(roomToken && roomId) {
-            const resp = await fetch(`${SETTINGS.getLS_API()}/api/sessions/${roomId}/migrate/${roomToken}`);
+            const resp = await fetchOrTransient(`${SETTINGS.getLS_API()}/api/sessions/${roomId}/migrate/${roomToken}`);
             if(resp.ok) {
-                const data = await resp.json();
+                let data = null;
+                try {
+                    data = await resp.json();
+                } catch(err) {
+                    throw new TransientAuthError("Lobby service sent an unreadable migrate reply.", resp.status);
+                }
                 sessionStorage.setItem(`roomUser:${roomId}:${roomToken}`, data.name);
                 return data;
             }
+            if(resp.status >= 500 || resp.status === 429) {
+                throw new TransientAuthError(`Lobby service answered ${resp.status} while checking the migrate link.`, resp.status);
+            }
+            // an invalid or expired migrate link falls back to the local identity
         }
 
-        let displayName = localStorage.getItem("displayName");
+        let displayName = requestedDisplayName || localStorage.getItem("displayName");
         if(!displayName) {
             if(allowCreate) {
                 displayName = "Player";
-                localStorage.setItem("displayName", displayName);
             } else {
                 SETTINGS.goToLogin();
-                throw new Error("Display name required.");
+                throw new AuthRejectedError("Display name required.");
             }
         }
 
         let token = localStorage.getItem("accessToken");
         if(!token) {
+            // Stored before the request so that a reply lost in transit is
+            // retried with the same token and maps to the same account.
             const bytes = new Uint8Array(24);
             window.crypto.getRandomValues(bytes);
             token = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
             SETTINGS.setAccessToken(token);
         }
 
-        const resp = await fetch(`${SETTINGS.getLS_API()}/api/local-auth`, {
+        const resp = await fetchOrTransient(`${SETTINGS.getLS_API()}/api/local-auth`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ token, displayName })
         });
+        const bodyText = await resp.text().catch(() => "");
         if(!resp.ok) {
-            SETTINGS.clearLocalIdentity();
-            SETTINGS.goToLogin();
-            throw new Error(await resp.text());
+            if(isDefinitiveAuthRejection(resp.status, bodyText)) {
+                SETTINGS.clearLocalIdentity();
+                SETTINGS.goToLogin();
+                throw new AuthRejectedError(bodyText || `Lobby service rejected the stored identity (${resp.status}).`, resp.status);
+            }
+            throw new TransientAuthError(`Lobby service answered ${resp.status} while checking your identity.`, resp.status);
         }
-        const data = await resp.json();
+
+        let data = null;
+        try {
+            data = JSON.parse(bodyText);
+        } catch(err) {
+            data = null;
+        }
+        if(!data || typeof data.token !== "string" || typeof data.username !== "string") {
+            // e.g. an HTML error page served with 200 by a proxy
+            throw new TransientAuthError("Lobby service sent an unreadable identity reply.", resp.status);
+        }
         SETTINGS.setAccessToken(data.token);
         SETTINGS.setUsername(data.username);
-        localStorage.setItem("displayName", data.displayName);
+        localStorage.setItem("displayName", data.displayName || displayName);
         return data;
     },
 
