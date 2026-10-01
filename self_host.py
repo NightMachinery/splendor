@@ -47,9 +47,11 @@ def default_url():
     return f"https://{APP}.pinky.lilf.ir"
 
 
-def served_url(configured_url, dev=False):
-    if dev and is_macos():
-        return f"http://127.0.0.1:{ports()['dev']}"
+def served_url(configured_url, dev=False, p=None):
+    # Dev mode never goes through Caddy: the Astro dev server proxies /ls and
+    # /gs itself (client/astro.config.mjs), so it is only served locally.
+    if dev:
+        return f"http://127.0.0.1:{(p or ports())['dev']}"
     return configured_url
 
 
@@ -108,9 +110,9 @@ def tmux_new(name, cmd, cwd=ROOT, extra_env=None):
 
 
 def ensure_tools(dev=False):
-    required = ["tmux", "caddy", "mvn", "pnpm", "java"]
-    if dev:
-        required.append("node")
+    required = ["tmux", "mvn", "pnpm", "java", "node"]
+    if not dev:
+        required.append("caddy")
     for tool in required:
         if not shutil.which(tool):
             raise SystemExit(f"Missing required tool: {tool}")
@@ -201,7 +203,9 @@ def caddy_block(url, dev=False):
 
 
 def update_caddy(url, dev=False):
-    if dev and is_macos():
+    if dev:
+        # Dev mode is local-only. Exposing the Vite 4 dev server publicly would
+        # also expose its known file-read bugs, so Caddy is left untouched.
         return
     block = caddy_block(url, dev)
     old = CADDYFILE.read_text() if CADDYFILE.exists() else ""
@@ -257,9 +261,15 @@ def start(args, dev=False):
     )
     wait_for_http(f"http://127.0.0.1:{p['game']}/api/online", "Game service")
     if dev:
-        tmux_new(SESSIONS["dev"], f"pnpm dev --host 127.0.0.1 --port {p['dev']}", cwd=ROOT / "client")
+        tmux_new(
+            SESSIONS["dev"], f"pnpm dev --host 127.0.0.1 --port {p['dev']}", cwd=ROOT / "client",
+            extra_env={
+                "SPLENDOR_LS_URL": f"http://127.0.0.1:{p['lobby']}",
+                "SPLENDOR_GS_URL": f"http://127.0.0.1:{p['game']}",
+            },
+        )
         wait_for_http(f"http://127.0.0.1:{p['dev']}", "Astro dev server")
-    print(f"Started {'dev' if dev else 'prod'} self-host at {served_url(args.url, dev=dev)}")
+    print(f"Started {'dev' if dev else 'prod'} self-host at {served_url(args.url, dev=dev, p=p)}")
 
 
 def setup(args):
