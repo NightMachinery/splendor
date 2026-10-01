@@ -98,3 +98,29 @@ File: `client/src/components/SpSprite.astro`, an inline SVG with one `<symbol>` 
 - **Icons**: `sp-i-menu`, `sp-i-history`, `sp-i-close`, `sp-i-eye`, `sp-i-crown`, `sp-i-lock`, `sp-i-check`, `sp-i-cascade`, `sp-i-satchel`, `sp-i-sacrifice` (a flame), `sp-i-noble` (a crowned bust), `sp-i-city` and `sp-i-offline`.
 
 Icons are decorative (`aria-hidden="true"`); the control that contains one carries the accessible name.
+
+## The shared head
+
+File: `client/src/components/BaseHead.astro`. The title, login, lobby and board pages render it inside their `<head>`; settings and the admin zone are out of scope and may adopt it later.
+
+```astro
+<head>
+    <BaseHead title="Splendor | Login" />
+    <!-- page-specific tags -->
+</head>
+```
+
+It renders, in order: `<meta charset>`, the viewport `width=device-width, initial-scale=1, viewport-fit=cover`, `theme-color` #0b1422, the `<title>` (default "Splendor"), the 32px and 48px PNG favicons, the 180px `apple-touch-icon`, and the link to `/manifest.webmanifest`. It also imports `tokens.css` and `primitives.css`, so any page that uses it gets the tokens, the Judson faces and the focus ring without importing them again.
+
+Props:
+
+- `title`: the document title. On the board WP-HUD rewrites `document.title` on each turn.
+- `preloadDisplayFont`: preloads the Judson 700 latin file. Set it only on pages that show a Judson title above the fold (login, lobby header, game over), because an unused preload wastes bandwidth and makes Chrome log a warning.
+
+The two favicon links carry `data-sp-icon` (32 or 48) and `data-sp-turn-href`, the URL of the matching turn favicon (`/images/icons/icon-turn-32.png` and `-48.png`). WP-HUD swaps each link's `href` to its `data-sp-turn-href` when your turn starts and back when it ends, so no script hard-codes the icon paths.
+
+`viewport-fit=cover` lets the page draw under the notch and home indicator; the safe-area tokens are how a region keeps its content out of them.
+
+### The web manifest
+
+File: `client/public/manifest.webmanifest`, hand-written JSON: name and short name "Splendor", `start_url` `/lobby/`, `scope` `/`, `display` standalone, `orientation` any, `background_color` and `theme_color` #0b1422, a description, and four icons: `icon-192.png` and `icon-512.png` with purpose "any", and `maskable-192.png` and `maskable-512.png` with purpose "maskable".

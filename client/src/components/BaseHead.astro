@@ -1,0 +1,35 @@
+---
+// Shared <head> contents for the title, login, lobby and board pages:
+//
+//   <head>
+//     <BaseHead title="Splendor | Login" />
+//     ...page-specific tags...
+//   </head>
+//
+// It also pulls in the design tokens and primitives, so every page that uses
+// it gets --sp-* tokens, the self-hosted Judson faces and the focus ring.
+// See docs/ui/foundations.md.
+import "../styles/sp/tokens.css";
+import "../styles/sp/primitives.css";
+
+export interface Props {
+    /** The document title. WP-HUD rewrites document.title on the board. */
+    title?: string;
+    /**
+     * Preload the Judson 700 latin face. Only for pages that show a Judson
+     * title above the fold; elsewhere the preload would be wasted bandwidth.
+     */
+    preloadDisplayFont?: boolean;
+}
+
+const { title = "Splendor", preloadDisplayFont = false } = Astro.props;
+---
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b1422" />
+<title>{title}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/images/icons/icon-32.png" data-sp-icon="32" data-sp-turn-href="/images/icons/icon-turn-32.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="/images/icons/icon-48.png" data-sp-icon="48" data-sp-turn-href="/images/icons/icon-turn-48.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/images/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+{preloadDisplayFont && <link rel="preload" href="/fonts/judson/judson-700-latin.woff2" as="font" type="font/woff2" crossorigin />}
