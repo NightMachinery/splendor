@@ -255,21 +255,33 @@ export function pageProbe(opts = {}) {
         if (underModal) continue;
         // Hit-test a 3x3 grid (10%, 50% and 90% across and down), so a
         // partial overlap (an edge or corner under another element) is
-        // caught too.
-        const pts = [0.1, 0.5, 0.9].flatMap((fy) => [0.1, 0.5, 0.9].map((fx) => [fx, fy]))
-            .map(([fx, fy]) => [r.left + r.width * fx, r.top + r.height * fy])
-            .filter(([x, y]) => x >= 0 && y >= 0 && x < vw && y < vh);
+        // caught too. A rounded control (a round token or icon button) has
+        // no hit region at the corners of its box, so its corner points move
+        // to 20% and 80%, which lie inside any border-radius shape (even a
+        // full circle or ellipse); the edge midpoints are inside already.
+        const ecs = cs(el);
+        const rounded = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius"]
+            .some((k) => parseFloat(/** @type {any} */ (ecs)[k]) > 0);
+        const corner = (/** @type {number} */ f, /** @type {number} */ other) => (rounded && other !== 0.5 && f !== 0.5 ? (f < 0.5 ? 0.2 : 0.8) : f);
+        const pts = [0.1, 0.5, 0.9].flatMap((fy) => [0.1, 0.5, 0.9].map((fx) => [corner(fx, fy), corner(fy, fx)]))
+            .map(([fx, fy]) => ({ x: r.left + r.width * fx, y: r.top + r.height * fy, centre: fx === 0.5 && fy === 0.5 }))
+            .filter(({ x, y }) => x >= 0 && y >= 0 && x < vw && y < vh);
         if (!pts.length) continue; // off screen: cannot hit-test
-        /** @type {Set<string>} */
-        const by = new Set();
-        let blocked = 0;
-        for (const [x, y] of pts) {
+        // A point that lands on an ancestor of the control only counts when
+        // the centre is lost as well (pointer-events: none, say). At an edge
+        // alone it means the hit region is not the box (a clip-path, a
+        // rotated control), and the tap still reaches the control.
+        const hits = pts.map(({ x, y, centre }) => {
             const hit = doc.elementFromPoint(x, y);
-            if (!hit || hit === el || el.contains(hit)) continue;
-            blocked++;
-            by.add(hit.contains(el) ? `${describe(hit)} (ancestor takes the tap)` : describe(hit));
+            if (!hit || hit === el || el.contains(hit)) return null;
+            return { hit, centre, ancestor: hit.contains(el) };
+        }).filter((h) => h !== null);
+        const centreLost = hits.some((h) => h.centre);
+        const blocking = hits.filter((h) => !h.ancestor || centreLost);
+        if (blocking.length) {
+            const by = [...new Set(blocking.map((h) => (h.ancestor ? `${describe(h.hit)} (ancestor takes the tap)` : describe(h.hit))))];
+            covered.push({ el: describe(el), by: by.join(" | "), points: `${blocking.length}/${pts.length}`, text: text(el, 30), inModal });
         }
-        if (blocked) covered.push({ el: describe(el), by: [...by].join(" | "), points: `${blocked}/${pts.length}`, text: text(el, 30), inModal });
     }
     small.sort((a, b) => Math.min(a.w, a.h) - Math.min(b.w, b.h));
     covered.sort((a, b) => Number(b.inModal) - Number(a.inModal) || parseInt(b.points, 10) - parseInt(a.points, 10));

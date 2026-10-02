@@ -148,7 +148,11 @@ visible board cards, nobles and cities, plus these findings:
   through DevTools `getEventListeners`, or the outermost `cursor: pointer`.
 - `covered`: controls whose 3x3 grid of hit-test points lands on another
   element. `IN MODAL` means a modal's own button is under something, which is
-  a stacking bug.
+  a stacking bug. On a control with a border radius the corner points move
+  in to 20% and 80%, inside any rounded shape, so round tokens and icon
+  buttons are not reported for their empty box corners. A point that lands
+  on the control's own ancestor counts only when the centre point is lost
+  too (`ancestor takes the tap`, as with `pointer-events: none`).
 - broken images, console errors and exceptions, HTTP responses of 400 or
   more and failed requests. The Lobby Service's 408 long-poll timeout is
   marked expected, and so are the 406 and 400 on the LS session poll of a
@@ -206,6 +210,15 @@ cannot screenshot or emulate touch.
   user's everyday browser profile.
 - Stop the instance you started (`./self_host.py instance-stop cdp`) and any
   fake stack, and confirm their ports are free.
+
+## Self-tests
+
+`node --test .claude/skills/splendor-browser/tests/*.test.mjs` (from the
+repository root) checks the scripts without a game stack: the probe's hit
+grid on its own test page, which network answers count as expected and
+the identity check. Tests that need Chrome are skipped when it is missing, and
+each one checks that it left no profile behind. Run them after changing
+anything under `scripts/`.
 
 ## Extending
 
