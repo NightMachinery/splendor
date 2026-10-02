@@ -4,7 +4,8 @@ Everything here runs from `client/` with pnpm. Four suites cover different
 layers:
 
 - **Unit tests** (`client/tests/unit/*.test.mjs`, `node:test`): the bot, the
-  rule checks, the offline rules mirror, the REST client and the fake stack.
+  rule checks, the offline rules mirror, the REST client, the fake stack
+  and the pnpm commands of the CI workflows.
   No browser, no server, a few seconds.
 - **Mocked suite** (`client/tests/*.spec.ts`, Playwright projects
   `mocked-*`): the real client in a browser, served by `astro dev`, with the
@@ -78,7 +79,7 @@ Extra arguments go straight to Playwright, for example `pnpm run test
 tests/game.spec.ts` or `pnpm run test:e2e:fake --headed`. Write `pnpm run
 test`, not `pnpm test`, when passing options: pnpm 8 parses the options of
 its built-in `pnpm test` itself and refuses `pnpm test --output=x` with
-"Unknown option: 'output'". A script already
+"Unknown options: 'output'". A script already
 selects its projects, and a second `--project` adds to that selection instead
 of narrowing it; for a single project call Playwright directly, as in `pnpm
 exec playwright test --project=mocked-desktop-chromium tests/game.spec.ts`.
@@ -415,6 +416,14 @@ informational step. Each Playwright run writes its own folder under
 uploaded as the `playwright-report` artifact. Nothing in CI talks to a real
 LS or GS. `.github/workflows/build-backend.yml` builds and tests the server
 with Maven.
+
+`tests/unit/ci-workflow.test.mjs` reads every workflow and fails on a pnpm
+command that cannot run: `pnpm test` (or `start`) followed by options, which
+pnpm refuses (see "Quick start"), and `pnpm run` of a script that
+`client/package.json` does not define. A mocked-suite step written as `pnpm
+test --output=...` once failed every CI run this way. The check is static: it
+does not catch a wrong Playwright option or project name, so after changing a
+step, run its command locally with `--list` added.
 
 ## Troubleshooting
 

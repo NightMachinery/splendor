@@ -2,7 +2,7 @@ name: Frontend Tests
 
 # Client tests, all offline (see docs/testing.md):
 # - node:test unit tests of the bot, rules checks, rules mirror and API client;
-# - the mocked Playwright suite (pnpm test), LS and GS stubbed by page.route;
+# - the mocked Playwright suite (pnpm run test), LS and GS stubbed by page.route;
 # - the full-stack specs against the engine-backed fake stack (test:e2e:fake).
 # Nothing here talks to a real Lobby Service or Game Service.
 
@@ -52,7 +52,9 @@ jobs:
       # expected failures, not errors. Each run gets its own report and
       # results folder, so a later step does not overwrite an earlier one's.
       - name: Mocked browser tests (Chromium)
-        run: pnpm test --output=test-results/mocked
+        # "pnpm run test", not "pnpm test": pnpm parses the options of its
+        # built-in test command itself and refuses --output.
+        run: pnpm run test --output=test-results/mocked
         env:
           PW_WEBKIT: '0'
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/mocked
