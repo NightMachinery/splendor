@@ -46,7 +46,7 @@ public class SplendorRestController {
     private final Authentication auth;
     private final GameSavesManager gameSavesManager;
     private final long longPollTimeout;
-    private final Map<String, ContentWatcher> gameWatcher;
+    private final Map<String, GameStateWatcher> gameWatcher;
 
     @Autowired
     Initializer initializer;
@@ -83,8 +83,8 @@ public class SplendorRestController {
         this.initializer = initializer;
     }
 
-    private ContentWatcher watcherFor(String sessionId) {
-        return gameWatcher.computeIfAbsent(sessionId, id -> new ContentWatcher());
+    private GameStateWatcher watcherFor(String sessionId) {
+        return gameWatcher.computeIfAbsent(sessionId, id -> new GameStateWatcher());
     }
 
     private static JsonObject parseActionBody(String bodyData) {
@@ -195,7 +195,7 @@ public class SplendorRestController {
                     gameVersion);
         }
         logger.info("Launched new game session: " + sessionId);
-        gameWatcher.put(sessionId, new ContentWatcher());
+        gameWatcher.put(sessionId, new GameStateWatcher());
     }
 
     /**
@@ -214,7 +214,8 @@ public class SplendorRestController {
                 throw new SplendorException("There is no session associated this session ID: " + sessionId + ".");
             }
 
-            ContentWatcher watcher = watcherFor(sessionId);
+            // taken before the hash comparison in getStringResult, so a move right after it still wakes this poll
+            ContentWatcher watcher = watcherFor(sessionId).forOnePoll();
             // serialize game (under the session lock, so that an action cannot change it halfway)
             Fetcher fetcher = () -> {
                 synchronized (game) {
