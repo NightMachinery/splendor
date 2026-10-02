@@ -118,24 +118,21 @@ const projects: Project[] = [
         timeout: 10 * 60 * 1000,
         use: { baseURL: stack?.baseUrl ?? undefined },
     },
-    // Rendered games: real stack, real board, one seat per viewport.
+    // Rendered games: real stack, real board. One project per browser
+    // engine; each test opens its own two seats (a 1280x800 desktop and an
+    // emulated phone with touch, see rendered-game.spec.ts), so the
+    // project's `use` only picks the engine.
     {
-        name: "e2e-desktop-chromium",
+        name: "e2e-ui-chromium",
         ...fullStack,
         timeout: 10 * 60 * 1000,
         use: { ...devices["Desktop Chrome"], baseURL: stack?.baseUrl ?? undefined },
     },
     {
-        name: "e2e-mobile-chromium",
+        name: "e2e-ui-webkit",
         ...fullStack,
         timeout: 10 * 60 * 1000,
-        use: { ...devices["Pixel 7"], baseURL: stack?.baseUrl ?? undefined },
-    },
-    {
-        name: "e2e-mobile-webkit",
-        ...fullStack,
-        timeout: 10 * 60 * 1000,
-        use: { ...devices["iPhone 14"], baseURL: stack?.baseUrl ?? undefined },
+        use: { ...devices["Desktop Safari"], baseURL: stack?.baseUrl ?? undefined },
     },
 ];
 

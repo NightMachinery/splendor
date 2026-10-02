@@ -34,19 +34,25 @@ elements. Pages that fail today on phones are listed as known layout debt and
 show up as expected failures; a responsive change that fixes one should
 remove it from `KNOWN_DEBT`.
 
-## Chrome CDP visual probes
+The rendered full games (`client/tests/e2e/rendered-game.spec.ts`) watch
+every game from a 1280x800 desktop seat and an emulated phone seat (Pixel 7,
+with touch) at the same time, and probe the phone board for the same two
+problems every few turns. A finding there is also recorded as known layout
+debt (an expected failure). The phone board passes both probes today, but it
+is far from comfortable: the whole board is a long single column (a full-page
+phone screenshot is over 3,000 device pixels tall), the history panel is a
+narrow strip of wrapped words, and the turn modals are covered as described
+in testing.md. Each run saves full-page screenshots of both seats at the
+start, mid-game and game over (see testing.md for where they land).
 
-A local CDP helper lives in `skills/chrome-cdp`. It can screenshot and probe a
-running board without relying on browser MCP tools. Point it at an isolated
-instance or at the fake stack (`node client/tests/fixtures/fake-stack.mjs
---web-port PORT --dist DIR`, see [testing.md](testing.md)), never at
-production. The modules in `client/tests/e2e/lib/` (`splendor-api.mjs`,
-`bot.mjs`, `stack.mjs`) can create the users and the game to look at:
+## Browser visual probes
 
-```bash
-node skills/chrome-cdp/shot.mjs --session=<id> --board=orient --user=<username> \
-  --token=<access-token> --vp=mobile --probe --out=/tmp/splendor-mobile.png
-```
-
-The probe JSON includes `hscroll`, viewport/document dimensions, board/card
-counts, visible modals, and visible body text.
+The `splendor-browser` skill (`.claude/skills/splendor-browser/`, linked for
+Codex as `.agents/skills/splendor-browser`) replaces the old
+`skills/chrome-cdp` helper. It launches its own private headless Chrome,
+seeds players and games through the real APIs (`seed.mjs`), screenshots any
+seat with real mobile emulation (`shot.mjs`) and reports layout problems
+(`probe.mjs`). Point it at an isolated instance (`--instance=NAME`) or at the
+fake stack (`node client/tests/fixtures/fake-stack.mjs --web-port 0 --dist
+client/dist`, see [testing.md](testing.md)), never at production or the
+default instance. Its `SKILL.md` has the commands and options.

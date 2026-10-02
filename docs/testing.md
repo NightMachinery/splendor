@@ -16,8 +16,8 @@ layers:
   every game version and player count, and probe the rules with illegal
   moves. No browser.
 - **Rendered games** (`client/tests/e2e/*.spec.ts` without `.api`, projects
-  `e2e-desktop-chromium`, `e2e-mobile-chromium`, `e2e-mobile-webkit`): a whole
-  bot game watched through the real board in a browser.
+  `e2e-ui-chromium` and `e2e-ui-webkit`): a whole bot game watched by both
+  players at once, one on a desktop browser and one on an emulated phone.
 
 The two full-stack suites run against either a real stack (an isolated
 self-host instance) or the **fake stack**, an offline stand-in for the LS and
@@ -30,9 +30,9 @@ cd client
 pnpm install
 pnpm exec playwright install chromium webkit
 
-pnpm run test:unit          # node:test unit tests
-pnpm test                   # mocked suite (starts astro dev on 127.0.0.1:4329)
-pnpm run test:e2e:fake      # full-stack suites, offline, on the fake stack
+pnpm run test:unit          # node:test unit tests, under 30 s
+pnpm test                   # mocked suite (starts astro dev on 127.0.0.1:4329), 1.5 to 2 min
+pnpm run test:e2e:fake      # full-stack suites, offline, on the fake stack, about 2 to 3 min
 pnpm run lint:css           # the CSS lint (client/tools/lint-css.mjs)
 ```
 
@@ -41,11 +41,17 @@ Against a real stack (see "Running against a real stack"):
 ```bash
 ./self_host.py instance-start e2e          # from the repository root
 cd client
-E2E_INSTANCE=e2e pnpm run test:e2e:api     # whole games and rule probes
-E2E_INSTANCE=e2e pnpm run test:e2e:ui      # rendered games
+E2E_INSTANCE=e2e pnpm run test:e2e:api     # whole games and rule probes, 10 to 25 s
+E2E_INSTANCE=e2e pnpm run test:e2e:ui      # rendered games, about 2 to 3 min
 E2E_INSTANCE=e2e pnpm run test:e2e         # both
 cd .. && ./self_host.py instance-stop e2e
 ```
+
+The times are from an Apple M2 laptop with Playwright's default worker
+count, partly while other heavy jobs ran. The API suite plays its 24 games
+in parallel, each in 1 to 4 s; each rendered game takes 1.5 to 2.5 min, and
+the four run in parallel. On a busy machine the rendered games take longer;
+see "Troubleshooting".
 
 The scripts in `client/package.json`:
 
@@ -55,7 +61,7 @@ The scripts in `client/package.json`:
   (`tests/unit/sp-*.test.mjs`, for `client/src/scripts/sp/`).
 - `test:e2e`: every `e2e-*` project.
 - `test:e2e:api`: `e2e-api` only.
-- `test:e2e:ui`: the rendered-game projects (`e2e-*-*`).
+- `test:e2e:ui`: the rendered-game projects (`e2e-ui-*`).
 - `test:e2e:fake`, `test:e2e:fake:api`: the same with `E2E_FAKE_STACK=1`.
 - `test:sp`: the redesign's Playwright specs (`tests/sp-*.spec.ts`) on
   `mocked-desktop-chromium`. None exist yet, so it passes with no tests
@@ -68,8 +74,11 @@ The scripts in `client/package.json`:
 - `check:assets`: `python3 art/build-assets.py --check`, which fails when a
   generated icon or background is out of date. Needs Pillow.
 
-Extra arguments go straight to Playwright, for example `pnpm test
-tests/game.spec.ts` or `pnpm run test:e2e:fake --headed`. A script already
+Extra arguments go straight to Playwright, for example `pnpm run test
+tests/game.spec.ts` or `pnpm run test:e2e:fake --headed`. Write `pnpm run
+test`, not `pnpm test`, when passing options: pnpm 8 parses the options of
+its built-in `pnpm test` itself and refuses `pnpm test --output=x` with
+"Unknown option: 'output'". A script already
 selects its projects, and a second `--project` adds to that selection instead
 of narrowing it; for a single project call Playwright directly, as in `pnpm
 exec playwright test --project=mocked-desktop-chromium tests/game.spec.ts`.
@@ -148,8 +157,9 @@ phones pass the overflow check.
 ## The full-stack suites
 
 Shared code in `client/tests/e2e/lib/`. The `.mjs` modules are plain ES
-modules with no dependencies, so other tools (for example the Chrome CDP
-skill in `skills/chrome-cdp`) can import them too:
+modules with no dependencies, so other tools import them too (the
+`splendor-browser` skill in `.claude/skills/splendor-browser/` seeds its games
+with `splendor-api.mjs` and `bot.mjs`):
 
 - `stack.mjs`: which stack to talk to (see "Choosing a stack").
 - `splendor-api.mjs`: `SplendorApi`, a REST client for both services:
@@ -177,26 +187,79 @@ skill in `skills/chrome-cdp`) can import them too:
 
 Specs:
 
-- `full-games.api.spec.ts`: one whole game per version and player count
-  (4 versions times 2, 3 and 4 players). After the game, an action must be
-  refused with 400, the actions endpoint must answer 200, and the LS must have
-  deleted the session.
+- `full-games.api.spec.ts`: `E2E_SEEDS` whole games (default 2, each with its
+  own seed) per version and player count, so 24 games by default (4
+  versions times 2, 3 and 4 players times 2). After the game, an action by
+  every player must be refused with 400, the actions endpoint must answer
+  200 `[]` for every player (never 500), the state must not have changed,
+  and the LS must have deleted the session. Each test attaches a
+  `game.json` (seed, rounds, turns, actions, winners, prestige, time).
 - `rules.api.spec.ts`: illegal moves must answer 400 (401 for another
   player's token) and leave the state byte for byte unchanged: gold taken like
   a gem, negative amounts, three of one colour, two plus one, four colours, a
   missing field, buying without paying or with tokens not held, an unknown
   card, reserving a noble, a follow-up that is not pending, moving out of
   turn, two from a pile of three, returning tokens while under ten, a fourth
-  reservation, and overpaying.
-- `rendered-game.spec.ts`: per version, a 2-player game with seat 0 logged in
-  in the browser (its token and name are put in `localStorage` before the
-  page loads). The bot plays both seats. After every turn the board's
-  `data-splendor-state-hash` must equal the MD5 of the GS body, and
-  `data-splendor-turn` must name the right player. On desktop, seat 0's token
-  turns go through the modals (`E2E_UI_TURNS`). Every `E2E_LAYOUT_EVERY`
-  turns the layout probes run and their findings become `layout`
-  annotations, not failures. At the end the game-over modal must name every
-  winner (by username).
+  reservation, and overpaying. Probes that need a particular moment watch
+  whole bot games and fire when it comes: a wrong-tier, owned or unknown
+  card for a pending cascade, main actions and the next player's moves while
+  a follow-up is pending, a Satchel turned into Gold, and overpaying with
+  gold to spare. About 45 illegal moves in all.
+- `rendered-game.spec.ts`: per version, a whole 2-player game watched by
+  both players at once, in two browser contexts: seat 1 on a desktop
+  (1280x800) and seat 2 on an emulated phone with touch (Pixel 7 in
+  Chromium, iPhone 14 in WebKit). Each seat's token and name are put in
+  `localStorage` before the board loads. The bot plays every move over the
+  API, so the turn UI (about to be redesigned) is only rendered, not driven,
+  unless `E2E_UI_TURNS` says otherwise. Checked on the way:
+  - after every action both boards render exactly the served state:
+    `data-splendor-state-hash` equals the MD5 of the GS body and
+    `data-splendor-turn` names the player to move;
+  - every `E2E_DOM_EVERY` turns, and at the start and the end, both boards
+    show the bank, every player's prestige, the nobles, the cities and the
+    card ids of every tier row as the API state has them;
+  - in three idle windows (start, mid-game, game over) of `E2E_IDLE_MS`
+    each, no seat sends more than 3 game-state GETs, and at the start and
+    mid-game each seat still has a long-poll open (or sent one), so a board
+    that busy-loops or one that stopped polling both fail. The real GS holds
+    a poll for up to 30 s, so there a healthy seat sends none (the fake stack
+    holds polls for a shorter time, so one per window is normal there);
+  - no page error and no console error on either seat. The one exception is
+    the board's LS session poll failing (406, then 400) once the LS has
+    deleted the finished session;
+  - at the end both seats show the game-over modal, "VICTORY" only for the
+    winners and "GAME OVER" for everyone else, the modal names every winner
+    (by username), and the LS has deleted the session.
+
+  Two kinds of **known debt** are recorded and reported without counting as
+  a plain failure:
+  - layout: every `E2E_LAYOUT_EVERY` turns the phone seat is probed for
+    elements that reach past the viewport and for controls of an open modal
+    that something else covers (`layout` annotation, `mobile-layout.json`).
+    The redesign is the next phase. In the runs so far the phone board passed
+    both probes at those moments;
+  - duplicate badges: whenever the DOM is compared, an other-player tab must
+    not show a badge (OWNER, MOD, OBSERVER) or a moderation button more than
+    once (`duplicate-badges` annotation). Today it always does:
+    `updateOtherPlayerInfo` in `client/src/scripts/game.js` looks up the
+    badge row by the class `game-player-badges` and the button row by
+    `game-player-mod-controls`, but creates both rows without those classes,
+    so every render appends another pair (6 OWNER badges by turn 5, one more
+    per render).
+
+  A finding turns the test into an expected failure (`known-debt`
+  annotation; the list reporter prints a cross, the summary counts it as
+  passed), but only when every other check passed. `PW_LAYOUT_STRICT=1`
+  makes it a plain failure. When the badge bug is fixed and no layout
+  finding remains, the tests pass outright.
+
+  Full-page screenshots of both seats at the start, at turn `E2E_MID_TURN`
+  and at game over are saved in the test's output folder
+  (`test-results/<test>/desktop-start.png`, `mobile-start.png`,
+  `desktop-mid.png`, `mobile-mid.png`, `desktop-game-over.png`,
+  `mobile-game-over.png`), attached to the HTML report, and listed in a
+  `screenshots` annotation. They check nothing: a capture that times out is
+  noted in a `screenshot-failed` annotation and does not fail the game.
 
 Every game attaches `moves.log`; a failed one also attaches `state.json`,
 `state-before.json` and a screenshot.
@@ -235,6 +298,19 @@ Then run with `E2E_INSTANCE=e2e`, and stop it with `./self_host.py
 instance-stop e2e` when you are done. An instance keeps its data across
 restarts, so users from earlier runs accumulate; delete
 `.self-host/instances/e2e` to start clean.
+
+`instance-start` never builds the jars. It copies `server/target/splendorGame.jar`
+and `setup/LobbyService/target/ls.jar` into the instance when it starts, so
+after a server change rebuild them and run `instance-start` again (it
+restarts a running instance):
+
+```bash
+mvn -f server/pom.xml -DskipTests -Dmaven.javadoc.skip=true -Dpmd.skip=true -Dcheckstyle.skip=true package
+mvn -f setup/LobbyService/pom.xml -Psqlite -DskipTests -Dmaven.javadoc.skip=true -Dpmd.skip=true package
+```
+
+In static mode it also rebuilds `client/dist` when a client source is newer
+than it. The test runs never touch the default instance or production.
 
 A static instance is the more reliable target for rendered games: an
 `astro dev` front restarts itself (and the page loses its server) when files
@@ -293,14 +369,21 @@ Full-stack knobs:
   `BASE_ORIENT_CITIES`, `BASE_ORIENT_CITIES_NOBLES`,
   `BASE_ORIENT_TRADE_ROUTES`.
 - `E2E_PLAYERS` (default `2,3,4`): player counts for the API games.
-- `E2E_UI_TURNS` (default `desktop`): which rendered-game projects play the
-  browser seat's token turns through the modals. `desktop` only on desktop,
-  `all` on every project with real clicks (expected to fail on phones while
-  the turn modals are covered, see the known layout debt), `force` on every project
-  with clicks dispatched straight to the controls (checks the request bodies
-  despite the covered layout), `off` never.
-- `E2E_LAYOUT_EVERY` (default 10): run the layout probes every N turns of a
-  rendered game; 0 turns them off.
+- `E2E_SEEDS` (default 2): whole API games per version and player count.
+- `E2E_UI_TURNS` (default `off`): which seats of a rendered game play their
+  token turns through the board's modals instead of the API. `off` none,
+  `desktop` the desktop seat, `all` both seats with real clicks (expected to
+  fail on the phone while the turn modals are covered, see the known layout
+  debt), `force` both seats with clicks dispatched straight to the controls
+  (checks the request bodies despite the covered layout).
+- `E2E_LAYOUT_EVERY` (default 10): probe the phone seat's layout every N
+  turns of a rendered game; 0 turns the probes off.
+- `E2E_DOM_EVERY` (default 5): compare both boards' DOM with the API state
+  every N turns.
+- `E2E_IDLE_MS` (default 5000): length of each idle window in which the
+  game-state requests are counted.
+- `E2E_MID_TURN` (default 24): the turn at which the mid-game screenshots
+  and idle window happen.
 
 Playwright and the mocked suite:
 
@@ -351,3 +434,22 @@ with Maven.
 - **A rule probe fails against a real instance but passes on the fake
   stack**: the server and `tests/fixtures/engine.mjs` disagree. Find out which
   one follows the rules in [game-rules.md](game-rules.md) and fix the other.
+- **A rendered game fails with "the desktop (or mobile) board did not render
+  the served state" and the trace shows the board's last game-state GET
+  still pending**: the GS did not wake that long-poll. This was a real GS bug
+  (simpoll's watcher missed a move made between its hash comparison and the
+  start of its wait, so the board stayed on the old state until the 30 s
+  timeout); `GameStateWatcher` fixes it, see
+  [client-architecture.md](client-architecture.md), "Long polling". If it
+  comes back, check that the instance runs a jar built after that fix:
+  `instance-start` copies the jars when it starts.
+- **Rendered games time out or screenshots are noted as `screenshot-failed`
+  on a busy machine**: each rendered game drives two pages, and a full-page
+  phone screenshot at device scale is large. Run fewer at once, for example
+  `E2E_INSTANCE=e2e pnpm run test:e2e:ui --workers=2`.
+- **A `[poll:board-lobby-session] network problem` warning about 50 s into a
+  rendered game**: expected with the LS as it is. The LS ends an idle
+  long-poll with 408 after 30 s, and Chromium does not hand a 408 on a reused
+  connection to the page; it sends the request again. The page's fetch then
+  runs into the board's 50 s abort. Warnings do not fail the rendered games
+  (only errors do).
