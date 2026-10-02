@@ -179,8 +179,12 @@ with `splendor-api.mjs` and `bot.mjs`):
   nobles, cities, Trading Posts powers); and `playGame({api, players,
   version, seed, ...})`, which plays a whole game, re-reads the state after
   every action, checks `stateViolations`, checks that the turn passes to the
-  next seat, and at the end checks equal turns and the winners. A violation
-  throws a `BotError` carrying the state and the last 30 moves.
+  next seat, checks after every round that the game ended if a player had
+  reached the goal (15 prestige, or a city in the Cities versions), and at
+  the end checks equal turns and the winners. A violation throws a
+  `BotError` carrying the state and the last 30 moves. The node:test suite
+  feeds it deliberately broken engines (wrong winner, tokens created, the
+  game ending a round late) to show each check fires.
 - `e2e.ts`: the Playwright `test` with an `api` fixture (skips without a
   stack, waits until both services answer), and the `E2E_*` knobs.
 - `ui-actor.ts`: plays a seat's token turns by clicking through the take and

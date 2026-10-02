@@ -32,7 +32,7 @@ import {
     amount, total, currentPlayer, findPlayer, visibleCards, boardDevCards, tierOf,
     isGem, ownsGemBonusCard, isUnassignedSatchel, goldValue, hasDoublePlusOne,
     paymentFor, shortfall, bonusGap, qualifiedNobles, qualifiedCities, sameColourBest,
-    isCitiesVersion, isTradingPostsVersion,
+    isCitiesVersion, isTradingPostsVersion, reachedEndCondition,
     stateViolations, initialStateViolations, finalStateViolations,
 } from "./rules.mjs";
 
@@ -493,10 +493,11 @@ const isPass = (move) => move.action === "TAKE_TOKEN" && total(/** @type {any} *
  * Creates `players` users (or uses the given ones), creates a session of
  * `version`, joins and launches it, then plays every seat with nextAction
  * until the Game Service reports game over. After every action it re-reads
- * the state and checks the invariants of rules.stateViolations; at the end it
- * checks that every player had the same number of turns and that the winners
- * follow the official rule. Any violation throws a BotError carrying the
- * state and the last moves.
+ * the state and checks the invariants of rules.stateViolations; after every
+ * round it checks that the game ended if someone had reached the goal; at
+ * the end it checks that every player had the same number of turns and that
+ * the winners follow the official rule. Any violation throws a BotError
+ * carrying the state and the last moves.
  *
  * `actor` lets a caller play some moves itself (for example through the
  * board UI): it is called before every move with { state, player, user,
@@ -585,6 +586,14 @@ export async function playGame(opts) {
             if (!state.gameOver) {
                 const expectedSeat = (before.turnCounter + 1) % users.length;
                 if (state.turnCounter !== expectedSeat) throw fail(`turn passed from seat ${before.turnCounter} to ${state.turnCounter}`, state, { before });
+                // The game ends at the end of the first round in which someone
+                // reached the goal: a round that ends with a player there and
+                // goes on is a late end (equal turns and the winner check
+                // alone would still pass it).
+                if (before.turnCounter === users.length - 1) {
+                    const atGoal = state.players.filter((/** @type {any} */ p) => reachedEndCondition(state, p)).map((/** @type {any} */ p) => p.name);
+                    if (atGoal.length) throw fail(`the round ended with ${atGoal.join(", ")} at the goal, but the game went on`, state, { before });
+                }
             }
         } else if ((state.curValidActions || []).some(isMain)) {
             throw fail(`${me.name} got a fresh turn without the turn passing`, state, { before });

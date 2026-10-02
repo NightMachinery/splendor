@@ -86,6 +86,33 @@ test("playGame catches a server that crowns the wrong winner", async () => {
     );
 });
 
+test("playGame catches a server that ends the game a round late", async () => {
+    // A broken checkForWin / isLastTurnOfRound: the round in which someone
+    // reached the goal ends, and one more round is played. Turns stay equal
+    // and the winners still match the final state, so only the round-end
+    // check can see it.
+    class OneRoundLate extends Engine {
+        finishTurn() {
+            const s = this.state;
+            if (!this.graced && s.turnCounter === s.players.length - 1 && s.players.some((p) => this.canPlayerWin(p))) {
+                this.graced = true;
+                s.turnCounter = 0;
+                s.curValidActions = ["BUY_CARD", "TAKE_TOKEN", "RESERVE_CARD"];
+                s.nobleVisitedThisTurn = false;
+                return;
+            }
+            super.finishTurn();
+        }
+    }
+    for (const [version, players] of [["BASE_ORIENT", 2], ["BASE_ORIENT_CITIES", 3], ["BASE_ORIENT_TRADE_ROUTES", 4]]) {
+        await assert.rejects(
+            playGame({ api: new BuggyApi(OneRoundLate), players, version, seed: 5 }),
+            (err) => err instanceof BotError && /the round ended with .* at the goal, but the game went on/.test(err.message),
+            `${version}, ${players} players`,
+        );
+    }
+});
+
 test("playGame catches a server that creates tokens", async () => {
     class FreeGold extends Engine {
         do_TAKE_TOKEN(p, body) {

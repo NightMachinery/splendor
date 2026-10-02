@@ -5,8 +5,9 @@ import { playGame } from "./lib/bot.mjs";
 // player count, E2E_SEEDS games (default 2, each with its own seed) are
 // played by bots to the end on the real Lobby Service and Game Service.
 // playGame checks token conservation, the 10-token and 3-reservation limits,
-// bonuses, prestige and card bookkeeping after every action, equal turns at
-// the end, and that the winners follow the official rule (most prestige
+// bonuses, prestige and card bookkeeping after every action, that the game
+// ends with the first round in which someone reached the goal, equal turns
+// at the end, and that the winners follow the official rule (most prestige
 // among those who reached the goal, then fewest cards).
 //
 // After game over: every further action is refused with 400, the actions
