@@ -5,6 +5,7 @@ import eu.kartoffelquadrat.ls.accountmanager.model.Player;
 import eu.kartoffelquadrat.ls.accountmanager.model.Role;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
 import java.util.Collection;
+import java.util.Collections;
 
 /**
  * ToDo: Update access URLs. Controller that resolves to a user identity / role based on a passed oauth2 token.
@@ -41,17 +43,35 @@ public class TokenController {
     RoomTokenService roomTokenService;
 
     /**
-     * Resolve logged in user back to her roles, based on token
+     * Resolve a token to the roles of its user. This is how the game server checks a token.
+     * <p>
+     * A room token counts only together with {@code session}, the id of the session it was minted for, and then
+     * has the player role. Without it, or for any other session, it gets the same 401 as an unknown token, so a
+     * room token can never pass for its player in another game.
      */
     @GetMapping(value = "/oauth/role")
-    public Collection<SimpleGrantedAuthority> currentUserRole(@RequestParam(value = "access_token", required = false) String token) {
-        String roomUser = roomTokenService.username(token);
-        if (!roomUser.isEmpty()) {
-            return java.util.Collections.singletonList(new SimpleGrantedAuthority(Role.ROLE_PLAYER.toString()));
+    public ResponseEntity<?> oauthRole(@RequestParam(value = "access_token", required = false) String token,
+                                       @RequestParam(value = "session", required = false) String session) {
+        if (roomTokenService.isRoomToken(token)) {
+            if (!roomTokenService.isForRoom(token, session)) {
+                return roomTokenRejected();
+            }
+            return ResponseEntity.ok(Collections.singletonList(new SimpleGrantedAuthority(Role.ROLE_PLAYER.toString())));
+        }
+        return ResponseEntity.ok(currentUserRole(token));
+    }
+
+    /**
+     * Roles behind a token, for the LS's own checks. A room token only ever has {@link RoomTokenService#ROOM_AUTHORITY}
+     * here, which no check accepts.
+     */
+    public Collection<SimpleGrantedAuthority> currentUserRole(String token) {
+        if (roomTokenService.isRoomToken(token)) {
+            return Collections.singletonList(new SimpleGrantedAuthority(RoomTokenService.ROOM_AUTHORITY));
         }
         Player player = authTokenService.resolve(token);
         if (player != null) {
-            return java.util.Collections.singletonList(new SimpleGrantedAuthority(player.getRole().toString()));
+            return Collections.singletonList(new SimpleGrantedAuthority(player.getRole().toString()));
         }
         return (Collection<SimpleGrantedAuthority>) SecurityContextHolder.getContext().getAuthentication().getAuthorities();
     }
@@ -61,19 +81,34 @@ public class TokenController {
     }
 
     /**
-     * Resolve logged in user back to username based on token
+     * Resolve a token to its username. This is how the game server checks that a token belongs to the player
+     * whose move it sends.
+     * <p>
+     * A room token resolves only together with {@code session}, the id of the session it was minted for. Without
+     * it, or for any other session, it gets the same 401 as an unknown token.
      */
     @GetMapping(value = "/oauth/username")
-    public String currentUserName(@RequestParam(value = "access_token", required = false) String token, Principal principal) {
-        String roomUser = roomTokenService.username(token);
-        if (!roomUser.isEmpty()) {
-            return roomUser;
+    public ResponseEntity<String> currentUserName(@RequestParam(value = "access_token", required = false) String token,
+                                                  @RequestParam(value = "session", required = false) String session,
+                                                  Principal principal) {
+        if (roomTokenService.isRoomToken(token)) {
+            if (!roomTokenService.isForRoom(token, session)) {
+                return roomTokenRejected();
+            }
+            return ResponseEntity.ok(roomTokenService.username(token));
         }
         Player player = authTokenService.resolve(token);
         if (player != null) {
-            return player.getName();
+            return ResponseEntity.ok(player.getName());
         }
-        return principal == null ? "" : principal.getName();
+        return ResponseEntity.ok(principal == null ? "" : principal.getName());
+    }
+
+    /** The 401 an unknown OAuth token gets, in the same JSON shape, so the GS's error handling applies unchanged. */
+    private static ResponseEntity<String> roomTokenRejected() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).contentType(MediaType.APPLICATION_JSON)
+                .body("{\"error\":\"invalid_token\",\"error_description\":\"A room token is only valid for the "
+                        + "session it was minted for; pass that session's id as session.\"}");
     }
 
     /**

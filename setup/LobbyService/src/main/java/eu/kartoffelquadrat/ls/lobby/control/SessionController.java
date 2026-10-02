@@ -298,6 +298,7 @@ public class SessionController {
 
         // Looks good, delete the session and update clients
         sessions.removeSession(sessionid);
+        roomTokenService.revokeRoom(String.valueOf(sessionid));
         sessionBroadcastManager.touch();
 
         // Terminate and remove BCM of the removed session.
@@ -438,8 +439,9 @@ public class SessionController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Session can not be left. Game has already " +
                     "been launched.");
 
-        // Looks good, remove the player form the session.
+        // Looks good, remove the player form the session. Migrate links for them in this session stop working.
         session.removePlayer(player);
+        roomTokenService.revoke(String.valueOf(sessionid), player);
         sessionBroadcastManager.touch();
         sessionSpecificBroadcastManagers.get(sessionid).touch();
         return ResponseEntity.status(HttpStatus.OK).body(null);
@@ -650,6 +652,7 @@ public class SessionController {
                     // Remove session and notify BCM
                     Long sessionId = sessionEntry.getKey();
                     sessions.removeSession(sessionId);
+                    roomTokenService.revokeRoom(String.valueOf(sessionId));
                     sessionSpecificBroadcastManagers.get(sessionId).terminate();
                 }
 

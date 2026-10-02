@@ -5,7 +5,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 
-/** Room-scoped migrate tokens that do not expose the user's primary auth token. */
+/**
+ * Room-scoped migrate tokens that do not expose the user's primary auth token.
+ *
+ * <p>A room token stands for one player in one session (room) and is worth nothing anywhere else: every lookup
+ * that resolves it to the player also names the session it is used for (see {@link #isForRoom}). Tokens live in
+ * memory only. They are revoked when their session is deleted or their player leaves it, so a session id that
+ * is ever reused cannot inherit them.
+ */
 @Service
 public class RoomTokenService {
     /** Authority of a room token in the security context. No @PreAuthorize role check accepts it. */
@@ -24,14 +31,33 @@ public class RoomTokenService {
         return token;
     }
 
+    /** Whether token is a live room token, for any room. */
+    public boolean isRoomToken(String token) {
+        return token != null && identities.containsKey(token);
+    }
+
+    /**
+     * The player a room token stands for, or "" for anything else. This alone does not say which session the
+     * token may act in; callers that grant anything must also check {@link #isForRoom}.
+     */
     public String username(String token) {
-        RoomIdentity identity = identities.get(token);
+        RoomIdentity identity = token == null ? null : identities.get(token);
         return identity == null ? "" : identity.username;
     }
 
     public boolean isForRoom(String token, String roomId) {
-        RoomIdentity identity = identities.get(token);
-        return identity != null && identity.roomId.equals(roomId);
+        RoomIdentity identity = token == null ? null : identities.get(token);
+        return identity != null && roomId != null && identity.roomId.equals(roomId);
+    }
+
+    /** Forget every room token minted for roomId (the session was deleted). */
+    public void revokeRoom(String roomId) {
+        identities.values().removeIf(identity -> identity.roomId.equals(roomId));
+    }
+
+    /** Forget the room tokens of one player in roomId (the player left the session). */
+    public void revoke(String roomId, String username) {
+        identities.values().removeIf(identity -> identity.roomId.equals(roomId) && identity.username.equals(username));
     }
 
     private String generateToken() {
