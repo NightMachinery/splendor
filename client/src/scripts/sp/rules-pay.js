@@ -251,10 +251,12 @@ export function sacrificeInfo(card, player) {
  * `tokens` always carries the six TOKEN_KEYS, ready for BUY_CARD. When ok,
  * checkPayment accepts it. When not ok, `shortBy` is how many more gems
  * (or bonuses, for a sacrifice) the player needs.
- * @param {any} card @param {any} player @param {{ preferGoldCards?: boolean }} [opts]
+ * `opts` may be omitted or null.
+ * @param {any} card @param {any} player @param {{ preferGoldCards?: boolean } | null} [opts]
  * @returns {AutoPayment}
  */
-export function autoPayment(card, player, opts = {}) {
+export function autoPayment(card, player, opts) {
+    const preferGoldCards = opts?.preferGoldCards === true;
     const gv = goldValue(player);
     /** @type {AutoPayment} */
     const res = {
@@ -295,7 +297,7 @@ export function autoPayment(card, player, opts = {}) {
     const owned = amount(player.bonuses, "Gold");
     let goldTokens;
     let used;
-    if (opts.preferGoldCards) {
+    if (preferGoldCards) {
         used = Math.min(goldNeeded, owned);
         goldTokens = goldNeeded - used;
     } else {

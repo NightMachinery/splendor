@@ -25,7 +25,10 @@ Where the client is deliberately stricter than the server, this page says so.
   names are the Java field names, and a field that is null on the server is
   absent from the JSON. `tests/fixtures/states.mjs` builds such states.
 - **Missing fields.** A missing field counts as 0, false or empty. A token map
-  may omit keys, and a value that is not a finite number counts as 0.
+  may omit keys, and a value that is not a finite number counts as 0. No
+  exported function throws on a missing, null or malformed argument, including
+  an options object passed as null (`tests/unit/sp-robust.test.mjs` sweeps
+  every export with such values).
 - **Colours.** Colour names are the server's TokenType names: `White`, `Blue`,
   `Green`, `Red`, `Brown`, `Gold` and `Satchel`. `GEMS` is the display order
   (White, Blue, Green, Red, Brown). `SERVER_GEM_ORDER` is the server's enum
