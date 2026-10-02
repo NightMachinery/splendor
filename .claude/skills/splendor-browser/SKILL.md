@@ -70,10 +70,18 @@ names get a `cdp-` prefix; the identities file (tokens included) is written
 
 ## Perspectives (`--as`)
 
-- `p1`, `p2`, ...: the seated players, each in its own browser context (own
-  localStorage). The identity (`displayName`, `accessToken`, `username`) is
-  seeded with `Page.addScriptToEvaluateOnNewDocument` before any page
-  script, after clearing the old keys, on the first document of the tab only.
+- `p1`, `p2`, ...: the seated players. Every tab, that is every
+  (perspective, viewport) pair, gets a browser context of its own, so no two
+  tabs share localStorage, even when `--jobs` runs several at once. The
+  identity (`displayName`, `accessToken`, `username`) is seeded with
+  `Page.addScriptToEvaluateOnNewDocument` before any page script, on the
+  first document of the tab only. It writes every key in place and never
+  removes one it is about to set: a page that finds `displayName` without
+  `accessToken` registers a brand-new account and renders as that stranger.
+- Identity check: after the probe, a shot whose stored username is not the
+  perspective's, or whose board shows a seated player the spectator view, is
+  marked `IDENTITY MISMATCH` and fails the run (exit 1) even without
+  `--assert`. It means the PNG shows someone else's view.
 - `spectator`: a logged-in user who is not seated. The inventory is hidden
   (`#player-inventory.hide`), and the probe reports `spectating`.
 - `anon`: no identity. A board URL redirects to `/login/`, which the run

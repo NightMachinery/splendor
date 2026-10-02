@@ -9,7 +9,7 @@
  * screen and can run next to other sessions.
  *
  * Attach mode (--cdp=URL): use a browser that already listens for CDP. Even
- * then every identity gets a fresh browser context (Target.createBrowserContext)
+ * then every tab gets a fresh browser context (Target.createBrowserContext)
  * and new targets; existing tabs are never touched and the browser is never
  * closed, only the contexts this process created are disposed.
  *
@@ -208,6 +208,17 @@ export class Browser {
         const { browserContextId } = await this.conn.send("Target.createBrowserContext", { disposeOnDetach: true });
         this.contexts.add(browserContextId);
         return browserContextId;
+    }
+
+    /**
+     * Dispose a context made by newContext, closing its tabs. Errors are
+     * ignored: the browser may already be gone.
+     * @param {string} contextId
+     */
+    async disposeContext(contextId) {
+        if (!this.contexts.delete(contextId)) return;
+        for (const page of [...this.pages]) if (page.contextId === contextId) await page.close().catch(() => {});
+        await this.conn.send("Target.disposeBrowserContext", { browserContextId: contextId }, { timeoutMs: 5000 }).catch(() => {});
     }
 
     /**

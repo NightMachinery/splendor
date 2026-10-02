@@ -1,10 +1,11 @@
 // @ts-check
 /**
  * The shared driver behind shot.mjs (screenshots + probe) and probe.mjs
- * (probe only). For every (perspective, viewport) pair it opens a tab in
- * that perspective's own browser context, seeds the identity before any
- * page script runs, loads the page, waits until it has settled, runs the
- * in-page probe and optionally captures a PNG. The run is described by a
+ * (probe only). For every (perspective, viewport) pair it opens one tab in a
+ * browser context of its own (so no two tabs ever share localStorage), seeds
+ * the identity before any page script runs, loads the page, waits until it
+ * has settled, runs the in-page probe, checks that the tab really ran as that
+ * perspective and optionally captures a PNG. The run is described by a
  * manifest.json in --out-dir.
  *
  * Options (both tools):
@@ -103,24 +104,47 @@ export function assertProbe(probe, events, wait, names) {
 }
 
 /**
- * The init script that gives one browser context its identity. Runs before
- * any page script, only on the target origin and only on the first document
- * of the tab (a sessionStorage marker), so a later logout or redirect by the
- * client is not papered over. It always clears the identity keys first, so
- * nothing from an earlier seeding can leak in.
+ * The init script that gives a tab its identity. Runs before any page
+ * script, only on the target origin and only on the first document of the
+ * tab (a sessionStorage marker), so a later logout or redirect by the client
+ * is not papered over. It sets every identity key in place and removes only
+ * keys it does not set (refreshToken; all of them for anon): it never
+ * removes a key it is about to write again, so no page script can see a
+ * half-written identity (displayName without accessToken makes the client
+ * register a brand-new account).
  * @param {string} origin @param {{ username: string, token: string, displayName: string } | null} identity
  */
 const identityScript = (origin, identity) => `(() => {
     try {
         if (location.origin !== ${JSON.stringify(origin)}) return;
         if (sessionStorage.getItem("splendorBrowserSeeded") === "1") return;
-        for (const k of ${JSON.stringify(IDENTITY_KEYS)}) localStorage.removeItem(k);
         const id = ${JSON.stringify(identity ? { displayName: identity.displayName, accessToken: identity.token, username: identity.username } : null)};
         if (id) for (const [k, v] of Object.entries(id)) localStorage.setItem(k, v);
+        for (const k of ${JSON.stringify(IDENTITY_KEYS)}) if (!id || !(k in id)) localStorage.removeItem(k);
         localStorage.setItem("splendorPollWhenHidden", "1");
         sessionStorage.setItem("splendorBrowserSeeded", "1");
     } catch (e) { /* storage blocked: the page will show login */ }
 })();`;
+
+/**
+ * Whether the tab really ran as the perspective it is labelled with. Two
+ * signs that it did not: the stored username is another account (the client
+ * registered a new one), or a seated player's board rendered the spectator
+ * view (the board decides that from the username it read while rendering,
+ * which a later write may have overwritten again). These are always
+ * failures, with or without --assert: the shot shows someone else's view.
+ * @param {any} probe @param {{ username: string, seat: number | null } | null} identity @param {boolean} redirected
+ * @returns {string | null}
+ */
+export function identityProblem(probe, identity, redirected) {
+    if (!identity || redirected || !probe?.splendor) return null;
+    const sp = probe.splendor;
+    if (sp.me !== identity.username) return `identity: the tab is logged in as ${sp.me ?? "nobody"}, not ${identity.username}`;
+    if (identity.seat !== null && identity.seat !== undefined && sp.ready && sp.spectating) {
+        return `identity: ${identity.username} is seated, but the board rendered the spectator view (the page ran under another identity)`;
+    }
+    return null;
+}
 
 /** Sets html[data-sp-test-insets] as soon as <html> exists. @param {string} value */
 const insetsScript = (value) => `(() => {
@@ -202,6 +226,7 @@ export function shotLine(shot) {
     ];
     if (p) {
         if (shot.redirected) bits.push(`REDIRECTED to ${p.path}`);
+        if (shot.identityMismatch) bits.push("IDENTITY MISMATCH");
         if (p.viewport.zoomedOut) bits.push(`ZOOMED OUT (layout ${p.viewport.width}px${p.viewport.metaViewport ? "" : ", no viewport meta"})`);
         if (sp.turn !== null && sp.turn !== undefined) bits.push(`turn=${sp.turn || "-"}${sp.myTurn ? " (mine)" : ""}`);
         if (sp.modals?.length) bits.push(`modals=${sp.modals.map((/** @type {any} */ m) => m.id).join("+")}`);
@@ -321,17 +346,19 @@ export async function run(argv, cfg) {
     /** @type {any[][]} */
     const results = [];
     try {
-        /** @type {Map<string, string>} */
-        const contexts = new Map();
-        for (const who of asList) contexts.set(who, await browser.newContext());
         const tasks = asList.flatMap((who) => viewports.map((vp) => ({ who, vp })));
 
         /** @param {{ who: string, vp: import("./browser.mjs").Viewport }} task */
         const runTask = async ({ who, vp }) => {
             const identity = who === "anon" ? null : identities[who];
-            const page = await browser.newPage(/** @type {string} */ (contexts.get(who)));
+            // A context per tab, not per perspective: tabs of one context
+            // share localStorage and run at the same time.
+            const context = await browser.newContext();
+            /** @type {import("./browser.mjs").Page | null} */
+            let page = null;
             const shots = [];
             try {
+                page = await browser.newPage(context);
                 await page.emulate(vp);
                 await page.addInitScript(identityScript(origin, identity));
                 if (insets !== null) await page.addInitScript(insetsScript(insets));
@@ -360,10 +387,12 @@ export async function run(argv, cfg) {
                         writeFileSync(png, await page.screenshot({ full }));
                     }
                     const failures = asserts.length ? assertProbe(probe, events, { ready, readyReasons }, asserts) : [];
+                    const wrongIdentity = identityProblem(probe, identity, redirected);
+                    if (wrongIdentity) failures.unshift(wrongIdentity);
                     if (failures.length) failed++;
                     const shot = {
                         perspective: who, username: identity?.username ?? null, viewport: vp, variant: variant || null,
-                        png, ready, redirected, readyReasons, waitedOn: wait.waitedOn, waitMs: wait.ms, probe, events, failures,
+                        png, ready, redirected, identityMismatch: wrongIdentity, readyReasons, waitedOn: wait.waitedOn, waitMs: wait.ms, probe, events, failures,
                     };
                     shots.push(shot);
                     process.stdout.write(`${shotLine(shot)}\n`);
@@ -375,7 +404,8 @@ export async function run(argv, cfg) {
                 shots.push(shot);
                 process.stdout.write(`${shotLine(shot)}\n`);
             } finally {
-                await page.close();
+                if (page) await page.close();
+                await browser.disposeContext(context);
             }
             return shots;
         };
