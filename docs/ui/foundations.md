@@ -131,35 +131,37 @@ File: `client/public/manifest.webmanifest`, hand-written JSON: name and short na
 
 File: `client/tools/lint-css.mjs`, plain Node with no dependencies. Run it from `client/`:
 
-- `node tools/lint-css.mjs` lints everything under `src/` and `public/`: CSS files, the `<style>` blocks of `.astro` and `.html` files, static `style="..."` attributes, and viewport metas. It exits 1 if anything outside the allowlist breaks a rule.
+- `node tools/lint-css.mjs` lints everything under `src/` and `public/`: CSS files, the `<style>` blocks of `.astro` and `.html` files, static style attributes, and viewport metas. It exits 1 if anything outside the allowlist breaks a rule.
 - `node tools/lint-css.mjs FILE...` lints only the named files.
 - `--self-test` runs every rule against built-in fixtures and also checks the real `tokens.css` contrast. It exits 1 if any fixture is flagged differently than expected.
 - `--contrast` prints the contrast probe (see below).
 - `--summary` adds per-file counts, including findings the allowlist suppresses, which is the quickest way to see what a legacy file still has to fix.
 - `--rules` lists the rules. `--verbose` prints the suppressed findings too. `--strict` turns stale allowlist entries into errors.
 
-The intended package scripts are `"lint:css": "node tools/lint-css.mjs"` and a `--self-test` run in CI; until they land in `package.json`, call the script directly.
+The package scripts are `pnpm lint:css` and `pnpm lint:css:self-test`.
+
+Markup is read by a small tag scanner rather than a regular expression. A `>` inside a quoted attribute value or inside a `{...}` expression (`onClick={() => go()}`) does not end the tag, and a `<` outside quotes and braces (as in `{a<b}`) means it was not a tag after all. The scanner skips the Astro frontmatter, HTML comments and the contents of `<script>`, and hands each `<style>` block's text to the CSS rules. A style attribute counts as static when it is single or double quoted, unquoted, or a string literal in braces (`style={"..."}`); anything computed, such as `style={{ zIndex: 5 }}` or a quoted value containing `{`, is skipped, as are styles set from JavaScript.
 
 ### Rules
 
 Each rule enforces part of section 4 of the UX spec, with the id that findings print:
 
-- `media-range`: no range syntax such as `(width <= 700px)` (iOS Safari before 16.4 ignores the whole block).
+- `media-range`: no range syntax such as `(width <= 700px)` (iOS Safari before 16.4 ignores the whole block). This and `media-contract` also check the media list of an `@import`.
 - `media-contract`: a query that uses orientation, height, hover, pointer, reduced motion or aspect ratio must be one of the section 0 strings exactly, and a width-only query at a layout threshold (700, 1024 or 1600px, give or take 1px) is rejected because it is a layout class missing its height condition. Other width switches, such as `(min-width: 400px)`, and `print` are fine.
 - `at-layer`: no `@layer` and no `@import ... layer()`.
 - `nesting`: no nested rules, no `&` and no `@nest`.
 - `color-mix`: no `color-mix()`.
 - `z-index`: a `z-index` is `var(--z-*)`, `auto` or a global keyword. A `calc()` offset from a token is a raw number too: add a rung to the ladder instead.
 - `viewport-height`: no `100vh`, `100dvh`, `100svh` or `100lvh`; use `var(--sp-vh)`.
-- `safe-area`: no `env(safe-area-inset-*)`; use `var(--sp-safe-t)` and its siblings.
+- `safe-area`: no `env(safe-area-inset-*)`, nor the iOS 11.0 spelling `constant(safe-area-inset-*)`; use `var(--sp-safe-t)` and its siblings.
 - `background-fixed`: no `background-attachment: fixed`, also not in the `background` shorthand. Draw a fixed `::before` layer instead.
 - `root-overflow`: no `overflow-x: hidden` or `clip` on `html`, `:root` or `body`, nor the `overflow` shorthand with those values. The clip hides horizontal overflow from the layout probes.
-- `fixed-ancestor`: `html`, `body`, `:root`, `#game-elements` (or `.game-elements`), `.board-container` and `#board` (or `.board`) never get `transform`, `translate`, `rotate`, `scale`, `filter`, `backdrop-filter`, `perspective`, `contain`, `will-change`, `container` or `content-visibility` with a value other than the neutral one. Any of those would make the element the containing block of the fixed bank inside it. The rule looks at the subject of the selector, so `body .board-tokens` and `body::before` are fine.
-- `hover-media`: every `:hover` selector sits inside `@media (hover: hover) and (pointer: fine)`, so nothing depends on hover and touch screens never get stuck hover states.
-- `font-family`: `font-family` and the `font` shorthand use `var(--sp-font-*)` (or a global keyword). Descriptors inside `@font-face` are exempt.
+- `fixed-ancestor`: `html`, `body`, `:root`, `#game-elements` (or `.game-elements`), `.board-container` and `#board` (or `.board`) never get `transform`, `translate`, `rotate`, `scale`, `transform-style`, `offset-path`, `filter`, `backdrop-filter`, `perspective`, `contain`, `will-change`, `container` or `content-visibility` with a value other than the neutral one. Any of those would make the element the containing block of the fixed bank inside it. A running animation counts too: an `animation` or `animation-name` on one of these elements is flagged when its `@keyframes`, in the same file or in any other scanned file, set one of those properties (keyframes that only fade, for example, are fine). The rule looks at the subject of the selector, so `body .board-tokens` and `body::before` are fine; the argument of `:is()` and `:where()` is part of the subject (`:where(body)` is `body`), while `:not()` and `:has()` are not.
+- `hover-media`: every selector that mentions `:hover`, also inside `:is()`, `:where()` or `:not()`, sits inside `@media (hover: hover) and (pointer: fine)`, so nothing depends on hover and touch screens never get stuck hover states.
+- `font-family`: `font-family` and the `font` shorthand use `var(--sp-font-*)` (or a global keyword), with nothing after it: the token already carries the fallback stack. Descriptors inside `@font-face` are exempt.
 - `viewport-meta`: a viewport meta reads exactly `width=device-width, initial-scale=1, viewport-fit=cover`, and a page under `src/pages/` that has an `<html>` element has a viewport meta or renders `<BaseHead />`.
 - `contrast`: the required pairs of the contrast probe hold (only checked on `tokens.css`).
-- `parse`: the CSS parses (balanced braces, closed comments and strings, no stray text).
+- `parse`: the CSS parses (balanced braces, closed comments and strings, no stray text). An unquoted `url(...)` is read as one token, so `/*` or `;` inside it is not a comment or a declaration end.
 
 `tokens.css` is exempt from `z-index`, `viewport-height` and `safe-area`, because it is where those raw values are meant to live.
 
@@ -195,7 +197,7 @@ The existing assets were checked and left alone: every icon is the exact pixel s
 
 How each part was checked, so a later change can repeat it:
 
-- The lint: `node tools/lint-css.mjs` passes over the whole tree, `--self-test` passes all fixtures (each forbidden pattern from the spec is flagged with exactly the expected rule, a clean fixture with every allowed form is not, and the exemptions for `tokens.css` hold), and disabling a rule in a copy of the script makes its fixtures fail.
+- The lint: `node tools/lint-css.mjs` passes over the whole tree, `--self-test` passes all fixtures (each forbidden pattern from the spec is flagged with exactly the expected rule, a clean fixture with every allowed form is not, and the exemptions for `tokens.css` hold), and disabling a rule in a copy of the script makes its fixtures fail. The same mutation check was repeated for each part of the markup scanner and the newer checks (quoted `>`, the `<` abort, frontmatter and script skipping, single quotes, string-literal styles, `:is()` subjects, `:hover` inside `:is()`, keyframe animations in the same and in another file, `transform-style`, `offset-path`, `constant()`, the font shorthand tail, `@import` media and unquoted `url()`): every mutation fails at least one fixture.
 - Player-count HUD heights: `tests/unit/sp-tokens.test.mjs` (part of `pnpm test:unit`; it skips itself when Playwright's Chromium is not installed) renders `tokens.css` in headless Chromium and reads `--sp-hud-h` and `--sp-l-hud-h` on `html` and on `body` for 2, 3 and 4 players at P, L, T, D and W, with the attribute on `body` only, on `html` only and on both. It repeats the check on a copy of the file with the `:has()` rules removed, as a browser without `:has()` sees it, and checks that `scrollIntoView()` under `html { scroll-padding-top: var(--sp-hud-h) }` leaves a target exactly below a 76px sticky HUD.
 - Tokens, primitives, sprite and head: a scratch Astro page rendering `<BaseHead />`, `<SpSprite />` and every primitive was built and measured in headless Chromium at all target viewports. The card widths, HUD and dock heights, gutter, noble size, pip size, `--sp-vh` and the test insets came out as listed above; the 3-4 player HUD heights switch; both reduced-motion signals zero `--sp-motion` and cap durations at 120ms; both Judson weights load from `/fonts/judson/` with no external request; all 19 symbols exist with 24x24 viewBoxes and render; the focus ring is 2px `--sp-focus` with a 2px offset.
 - Manifest: it parses as JSON, has every field from the spec, and each icon it names exists at the declared size.

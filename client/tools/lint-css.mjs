@@ -3,7 +3,7 @@
  * CSS lint for the board redesign. No dependencies. See docs/ui/foundations.md.
  *
  *   node tools/lint-css.mjs              lint src/ and public/: CSS files, .astro <style>
- *                                        blocks, static style="" attributes, viewport metas
+ *                                        blocks, static style attributes, viewport metas
  *   node tools/lint-css.mjs FILE...      lint only these files (relative to client/ or absolute)
  *   node tools/lint-css.mjs --self-test  check every rule against built-in fixtures
  *   node tools/lint-css.mjs --contrast   print the token contrast report
@@ -19,6 +19,8 @@
  *
  * Exit status: 0 clean, 1 findings or a failed self-test, 2 usage or I/O error.
  */
+// The self-test fixtures embed markup full of double quotes.
+/* eslint quotes: ["error", "double", { "avoidEscape": true }] */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -54,15 +56,16 @@ export const RULES = {
     "color-mix": "No color-mix().",
     "z-index": "z-index is var(--z-*) or a keyword; raw numbers only in tokens.css.",
     "viewport-height": "No 100vh, 100dvh, 100svh or 100lvh outside tokens.css; use var(--sp-vh).",
-    "safe-area": "No env(safe-area-inset-*) outside tokens.css; use var(--sp-safe-t/r/b/l).",
+    "safe-area": "No env(safe-area-inset-*), nor the old constant() form, outside tokens.css; use var(--sp-safe-t/r/b/l).",
     "background-fixed": "No background-attachment: fixed; draw a position: fixed ::before layer instead.",
     "root-overflow": "No overflow-x: hidden or clip (nor overflow: hidden or clip) on html, :root or body.",
     "fixed-ancestor":
         "html, body, #game-elements, .board-container and #board never get transform, translate, rotate, " +
-        "scale, filter, backdrop-filter, perspective, contain, will-change, container or content-visibility, " +
-        "which would capture their position: fixed descendants.",
-    "hover-media": `:hover rules sit inside @media ${MEDIA.hover}; nothing depends on hover.`,
-    "font-family": "font-family and the font shorthand use var(--sp-font-*).",
+        "scale, transform-style, offset-path, filter, backdrop-filter, perspective, contain, will-change, " +
+        "container or content-visibility, nor an animation whose @keyframes set one, which would capture " +
+        "their position: fixed descendants.",
+    "hover-media": `:hover rules (also inside :is(), :where() or :not()) sit inside @media ${MEDIA.hover}; nothing depends on hover.`,
+    "font-family": "font-family and the font shorthand use var(--sp-font-*), with no fallback after it.",
     "viewport-meta": `A viewport meta reads exactly "${VIEWPORT_META}", and every page has one (BaseHead renders it).`,
     "contrast": "Text tokens are at least 4.5:1 on --sp-bg, --sp-surface-1 and --sp-surface-2 (tokens.css).",
 };
@@ -140,6 +143,16 @@ export function parseCss(css, firstLine = 1) {
             i = end + 2;
             continue;
         }
+        // An unquoted url(...) is one token: "/*" or ";" inside it is not a comment or an end.
+        if ((ch === "u" || ch === "U") && /^url\(\s*[^\s"')]/i.test(css.slice(i, i + 6)) && !/[\w-]/.test(css[i - 1] || "")) {
+            const end = css.indexOf(")", i);
+            if (end > 0) {
+                append(css.slice(i, end + 1));
+                line += countNewlines(css.slice(i, end + 1));
+                i = end + 1;
+                continue;
+            }
+        }
         if (ch === '"' || ch === "'") {
             let j = i + 1;
             while (j < css.length && css[j] !== ch && css[j] !== "\n") j += css[j] === "\\" ? 2 : 1;
@@ -214,12 +227,17 @@ export function splitTopLevel(s, sep = ",") {
     return out.map((x) => x.trim()).filter(Boolean);
 }
 
-/** Replace the insides of strings, () and [] with "_" so only the outer structure remains. */
+/**
+ * Replace the insides of strings, () and [] with "_" so only the outer
+ * structure remains. The result has the same length (in UTF-16 code units),
+ * so an index into it is an index into the input.
+ */
 function maskNested(s) {
     let out = "";
     let depth = 0;
     let quote = null;
-    for (const ch of s) {
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
         if (quote) {
             out += "_";
             if (ch === quote) quote = null;
@@ -245,12 +263,45 @@ function maskNested(s) {
     return out;
 }
 
+/**
+ * Replace the insides of strings and [] with "_", keeping () contents, so
+ * pseudo-classes inside :is(), :where() and :not() stay visible.
+ */
+function maskStringsAndAttrs(s) {
+    let out = "";
+    let depth = 0;
+    let quote = null;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (quote) {
+            out += "_";
+            if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'") {
+            quote = ch;
+            out += "_";
+        } else if (ch === "[") {
+            out += depth === 0 ? ch : "_";
+            depth++;
+        } else if (ch === "]") {
+            depth = Math.max(0, depth - 1);
+            out += depth === 0 ? ch : "_";
+        } else {
+            out += depth > 0 ? "_" : ch;
+        }
+    }
+    return out;
+}
+
 const PSEUDO_ELEMENT = /::|:(before|after|first-line|first-letter)(?![\w-])/i;
+// Functional pseudo-classes that match their argument itself, so their
+// argument's subject is the compound's subject. :not() and :has() are not.
+const MATCHES_ARGUMENT = /:(is|where|matches|-webkit-any|-moz-any)\(/gi;
 
 /**
  * Which protected element a selector's subject (its last compound) targets:
  * "html", "body", ":root", "#board", ... or null. Pseudo-elements are not
- * the element itself, so body::before is not body.
+ * the element itself, so body::before is not body. :where(body) and
+ * :is(html, .x) are body and html.
  */
 function protectedSubjects(selector) {
     const hits = [];
@@ -266,6 +317,14 @@ function protectedSubjects(selector) {
         for (const m of compound.matchAll(/(#game-elements|#board|\.board-container|\.game-elements|\.board)(?![\w-])/g)) {
             hits.push(m[1]);
         }
+        // maskNested keeps each character's position, so the raw argument is
+        // the same slice of the unmasked compound.
+        const raw = complex.slice(k + 1);
+        for (const m of compound.matchAll(MATCHES_ARGUMENT)) {
+            const open = m.index + m[0].length - 1;
+            const close = compound.indexOf(")", open + 1);
+            if (close > open) hits.push(...protectedSubjects(raw.slice(open + 1, close)));
+        }
     }
     return [...new Set(hits)];
 }
@@ -277,8 +336,11 @@ const KEYWORDS = "inherit|initial|unset|revert|revert-layer";
 const Z_OK = new RegExp(`^(var\\(--z-[\\w-]+\\)|auto|${KEYWORDS})$`, "i");
 const FONT_FAMILY_OK = new RegExp(`^(var\\(--sp-font-[\\w-]+\\)|${KEYWORDS})$`, "i");
 const FONT_KEYWORD = new RegExp(`^(${KEYWORDS})$`, "i");
+// The family is the last part of the font shorthand, so nothing may follow the token.
+const FONT_SHORTHAND_OK = /var\(--sp-font-[\w-]+\)\s*$/i;
 const VH_100 = /(?<![\w.-])100(?:d|s|l)?vh(?![\w-])/i;
-const SAFE_ENV = /\benv\(\s*safe-area-inset-/i;
+// constant() is the iOS 11.0 spelling of env().
+const SAFE_ENV = /\b(?:env|constant)\(\s*safe-area-inset-/i;
 const RANGE_FEATURE = /\([^()]*[<>=][^()]*\)/;
 const LAYOUT_FEATURE =
     /^(orientation|(min-|max-)?(device-)?height|(any-)?hover|(any-)?pointer|prefers-reduced-motion|(min-|max-)?(device-)?aspect-ratio)$/;
@@ -292,6 +354,9 @@ const FIXED_ANCESTOR_PROPS = {
     "translate": "none",
     "rotate": "none",
     "scale": "none",
+    "transform-style": "flat",
+    "-webkit-transform-style": "flat",
+    "offset-path": "none",
     "filter": "none",
     "-webkit-filter": "none",
     "backdrop-filter": "none",
@@ -304,6 +369,60 @@ const FIXED_ANCESTOR_PROPS = {
     "container": "none",
     "content-visibility": "visible",
 };
+
+/** The capturing property a declaration sets, or null when its value is the neutral one. */
+function capturingProp(prop, value) {
+    if (!(prop in FIXED_ANCESTOR_PROPS)) return null;
+    const v = value.trim().toLowerCase();
+    return v === FIXED_ANCESTOR_PROPS[prop] || FONT_KEYWORD.test(v) ? null : prop;
+}
+
+const ANIMATION_PROPS = new Set(["animation", "-webkit-animation", "animation-name", "-webkit-animation-name"]);
+const ANIMATION_KEYWORDS = new Set([
+    "none", "infinite", "normal", "reverse", "alternate", "alternate-reverse", "forwards", "backwards", "both",
+    "running", "paused", "ease", "ease-in", "ease-out", "ease-in-out", "linear", "step-start", "step-end", "auto",
+    ...KEYWORDS.split("|"),
+]);
+
+/** The @keyframes names an animation or animation-name value refers to. */
+function animationNames(prop, value) {
+    const names = [];
+    for (const layer of splitTopLevel(value)) {
+        if (prop.endsWith("animation-name")) {
+            names.push(layer.replace(/^["']|["']$/g, ""));
+            continue;
+        }
+        // Drop functions (cubic-bezier(), steps(), var()), then times, numbers and keywords.
+        for (const tok of layer.replace(/[\w-]+\([^()]*\)/g, " ").split(/\s+/)) {
+            if (!tok || /^[-+]?[\d.]+(m?s)?$/i.test(tok) || ANIMATION_KEYWORDS.has(tok.toLowerCase())) continue;
+            names.push(tok.replace(/^["']|["']$/g, ""));
+        }
+    }
+    return names.filter((n) => n && n.toLowerCase() !== "none");
+}
+
+/**
+ * For each @keyframes block in some CSS, the capturing properties it
+ * animates: Map name -> [prop, ...] (only names that animate at least one).
+ */
+export function keyframeCaptures(css) {
+    const out = new Map();
+    const visit = (nodes) => {
+        for (const node of nodes) {
+            if (node.type === "at" && /keyframes$/.test(node.name) && node.children) {
+                const props = new Set();
+                for (const frame of node.children) {
+                    for (const d of frame.children || []) if (d.type === "decl" && capturingProp(d.prop, d.value)) props.add(d.prop);
+                }
+                if (props.size) out.set(node.prelude.replace(/^["']|["']$/g, ""), [...props]);
+            } else if (node.children) {
+                visit(node.children);
+            }
+        }
+    };
+    visit(parseCss(css).root.children);
+    return out;
+}
 
 export function normalizeMedia(q) {
     return q
@@ -346,7 +465,16 @@ function mediaFindings(prelude) {
     return out;
 }
 
-function lintTree(root, { isTokens }, add) {
+/** The media query list of an @import prelude, after its URL, layer and supports(). */
+function importMedia(prelude) {
+    return prelude
+        .replace(/^\s*(url\([^)]*\)|"[^"]*"|'[^']*')/i, "")
+        .replace(/\b(layer|supports)\([^)]*\)/gi, "")
+        .replace(/^\s*layer\b/i, "")
+        .trim();
+}
+
+function lintTree(root, ctx, add) {
     const visit = (nodes, ancestors) => {
         for (const node of nodes) {
             const styleAncestor = ancestors.some((a) => a.type === "rule");
@@ -356,8 +484,12 @@ function lintTree(root, { isTokens }, add) {
                 if (node.name === "nest") add(node.line, "nesting", "@nest");
                 else if (styleAncestor && node.children) add(node.line, "nesting", `@${node.name} nested inside a style rule`);
                 if (node.name === "media") for (const [rule, msg] of mediaFindings(node.prelude)) add(node.line, rule, msg);
+                if (node.name === "import" && importMedia(node.prelude)) {
+                    for (const [rule, msg] of mediaFindings(importMedia(node.prelude))) add(node.line, rule, msg);
+                }
             } else if (node.type === "rule") {
-                const plain = maskNested(node.selector);
+                // Strings and attribute values hidden; :is()/:where()/:not() arguments kept.
+                const plain = maskStringsAndAttrs(node.selector);
                 if (styleAncestor) add(node.line, "nesting", `rule "${node.selector}" nested inside a style rule`);
                 else if (plain.includes("&")) add(node.line, "nesting", `"&" in selector "${node.selector}"`);
                 const inKeyframes = ancestors.some((a) => a.type === "at" && /keyframes$/.test(a.name));
@@ -370,7 +502,7 @@ function lintTree(root, { isTokens }, add) {
                 if (!parent || parent.type === "root") {
                     add(node.line, "parse", `declaration "${node.prop}" outside any rule`);
                 } else if (parent.type === "rule") {
-                    lintDecl(node, parent.selector, isTokens, add);
+                    lintDecl(node, parent.selector, ctx, add);
                 }
                 // Declarations directly in an at-rule are descriptors (@font-face, @page, @property).
             }
@@ -380,7 +512,7 @@ function lintTree(root, { isTokens }, add) {
     visit(root.children, []);
 }
 
-function lintDecl(decl, selector, isTokens, add) {
+function lintDecl(decl, selector, { isTokens, keyframes }, add) {
     const { prop, value, line } = decl;
     if (/\bcolor-mix\(/i.test(value)) add(line, "color-mix", `${prop}: ${value}`);
     if (!isTokens && VH_100.test(value)) add(line, "viewport-height", `${prop}: ${value}`);
@@ -393,7 +525,7 @@ function lintDecl(decl, selector, isTokens, add) {
         add(line, "background-fixed", `${prop}: ${value}`);
     }
     if (prop === "font-family" && !FONT_FAMILY_OK.test(value)) add(line, "font-family", `font-family: ${value}`);
-    if (prop === "font" && !FONT_KEYWORD.test(value) && !/var\(--sp-font-/i.test(value)) add(line, "font-family", `font: ${value}`);
+    if (prop === "font" && !FONT_KEYWORD.test(value) && !FONT_SHORTHAND_OK.test(value)) add(line, "font-family", `font: ${value}`);
 
     const subjects = protectedSubjects(selector);
     if (!subjects.length) return;
@@ -404,10 +536,13 @@ function lintDecl(decl, selector, isTokens, add) {
             add(line, "root-overflow", `${prop}: ${value} on ${roots.join(", ")}`);
         }
     }
-    if (prop in FIXED_ANCESTOR_PROPS) {
-        const v = value.trim().toLowerCase();
-        if (v !== FIXED_ANCESTOR_PROPS[prop] && !FONT_KEYWORD.test(v)) {
-            add(line, "fixed-ancestor", `${prop}: ${value} on ${subjects.join(", ")}`);
+    if (capturingProp(prop, value)) add(line, "fixed-ancestor", `${prop}: ${value} on ${subjects.join(", ")}`);
+    // A running animation of a capturing property captures as well. Keyframes
+    // are looked up in the same file first, then in every scanned file.
+    if (ANIMATION_PROPS.has(prop)) {
+        for (const name of animationNames(prop, value)) {
+            const props = keyframes.get(name);
+            if (props) add(line, "fixed-ancestor", `${prop}: ${value} on ${subjects.join(", ")} animates ${props.join(", ")} (@keyframes ${name})`);
         }
     }
 }
@@ -417,42 +552,199 @@ function lintDecl(decl, selector, isTokens, add) {
 
 const lineAt = (text, index) => 1 + countNewlines(text.slice(0, index));
 
-export function lintCss(css, { isTokens = false, firstLine = 1 } = {}) {
+export function lintCss(css, { isTokens = false, firstLine = 1, keyframes = new Map() } = {}) {
     const findings = [];
     const add = (line, rule, message) => findings.push({ line, rule, message: message.replace(/\s+/g, " ") });
     const { root, errors } = parseCss(css, firstLine);
     for (const e of errors) add(e.line, "parse", e.message);
-    lintTree(root, { isTokens }, add);
+    const all = new Map([...keyframes, ...keyframeCaptures(css)]);
+    lintTree(root, { isTokens, keyframes: all }, add);
     return findings;
 }
 
-function lintMarkup(text, rel) {
-    const findings = [];
-    let viewportMetas = 0;
-    for (const m of text.matchAll(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi)) {
-        if (/\blang=["']?(scss|sass|less|stylus|styl)/i.test(m[1])) continue;
-        const start = m.index + m[0].indexOf(">") + 1;
-        findings.push(...lintCss(m[2], { firstLine: lineAt(text, start) }));
+/** Index of the quote closing the JS string that opens at `i`, or -1. */
+function skipJsString(text, i) {
+    const q = text[i];
+    for (let j = i + 1; j < text.length; j++) {
+        if (text[j] === "\\") j++;
+        else if (text[j] === q) return j;
+        else if (text[j] === "\n") return -1;
     }
-    for (const m of text.matchAll(/<([a-zA-Z][\w-]*)(\s[^<>]*?)?\/?>/g)) {
-        const tag = m[1].toLowerCase();
-        const attrs = m[2] || "";
-        const line = lineAt(text, m.index);
-        if (tag === "meta" && /\bname=["']viewport["']/i.test(attrs)) {
-            viewportMetas++;
-            const content = /\bcontent=["']([^"']*)["']/i.exec(attrs);
-            const got = content ? content[1].split(",").map((s) => s.trim()).filter(Boolean).join(", ") : "";
-            if (got !== VIEWPORT_META) {
-                findings.push({ line, rule: "viewport-meta", message: `viewport is "${content ? content[1] : ""}"` });
+    return -1;
+}
+
+/** Index of the backtick closing the template literal that opens at `i`, or -1. */
+function skipTemplate(text, i) {
+    for (let j = i + 1; j < text.length; j++) {
+        if (text[j] === "\\") j++;
+        else if (text[j] === "`") return j;
+        else if (text[j] === "$" && text[j + 1] === "{") {
+            const end = skipBraces(text, j + 1);
+            if (end < 0) return -1;
+            j = end - 1;
+        }
+    }
+    return -1;
+}
+
+/** Index just past the "}" matching the "{" at `i`, skipping JS strings and template literals, or -1. */
+function skipBraces(text, i) {
+    let depth = 0;
+    for (let j = i; j < text.length; j++) {
+        const ch = text[j];
+        if (ch === '"' || ch === "'") j = skipJsString(text, j);
+        else if (ch === "`") j = skipTemplate(text, j);
+        else if (ch === "{") depth++;
+        else if (ch === "}" && --depth === 0) return j + 1;
+        if (j < 0) return -1;
+    }
+    return -1;
+}
+
+/**
+ * The attributes of a start tag whose name ends at `j`, up to its closing
+ * ">" or "/>". A ">" inside a quoted value or a {...} expression does not
+ * close the tag. Returns null when this is not a tag after all (an
+ * unquoted "<" first, or no end).
+ */
+function parseTag(text, j) {
+    const attrs = new Map();
+    while (j < text.length) {
+        const ch = text[j];
+        if (/\s/.test(ch)) {
+            j++;
+        } else if (ch === ">") {
+            return { attrs, end: j + 1, selfClosing: false };
+        } else if (ch === "/" && text[j + 1] === ">") {
+            return { attrs, end: j + 2, selfClosing: true };
+        } else if (ch === "<") {
+            return null;
+        } else if (ch === "{") {
+            j = skipBraces(text, j); // {...spread} or a bare expression
+            if (j < 0) return null;
+        } else {
+            const nm = /^[^\s=>/<{"'`]+/.exec(text.slice(j, j + 200));
+            if (!nm) {
+                j++; // a stray quote or slash
+                continue;
+            }
+            const name = nm[0].toLowerCase();
+            j += nm[0].length;
+            let k = j;
+            while (/\s/.test(text[k] || "")) k++;
+            if (text[k] !== "=") {
+                attrs.set(name, { kind: "bare", value: "" });
+                continue;
+            }
+            k++;
+            while (/\s/.test(text[k] || "")) k++;
+            const q = text[k];
+            if (q === '"' || q === "'") {
+                const close = text.indexOf(q, k + 1);
+                if (close < 0) return null;
+                attrs.set(name, { kind: "quoted", value: text.slice(k + 1, close) });
+                j = close + 1;
+            } else if (q === "{") {
+                const end = skipBraces(text, k);
+                if (end < 0) return null;
+                attrs.set(name, { kind: "expression", value: text.slice(k + 1, end - 1) });
+                j = end;
+            } else if (q === "`") {
+                const close = skipTemplate(text, k);
+                if (close < 0) return null;
+                attrs.set(name, { kind: "template", value: text.slice(k + 1, close) });
+                j = close + 1;
+            } else {
+                const v = /^[^\s>]*/.exec(text.slice(k, k + 2000))[0];
+                attrs.set(name, { kind: "unquoted", value: v });
+                j = k + v.length;
             }
         }
-        const style = /\sstyle="([^"]*)"/i.exec(attrs);
-        if (!style || /\{/.test(style[1])) continue;
-        const id = /\sid="([\w-]+)"/i.exec(attrs);
-        const classes = /\sclass="([^"{}]*)"/i.exec(attrs);
+    }
+    return null;
+}
+
+/**
+ * Every start tag of an .astro or .html file, skipping the Astro
+ * frontmatter, comments and the contents of <script> and <style> (a
+ * <style> tag's text comes back as `content`).
+ */
+export function* scanTags(text, { astro = false } = {}) {
+    let i = 0;
+    const frontmatter = astro ? /^\s*---[^\S\n]*\n[\s\S]*?\n---/.exec(text) : null;
+    if (frontmatter) i = frontmatter[0].length;
+    const lower = text.toLowerCase();
+    while (i < text.length) {
+        const lt = text.indexOf("<", i);
+        if (lt < 0) return;
+        if (text.startsWith("<!--", lt)) {
+            const end = text.indexOf("-->", lt + 4);
+            i = end < 0 ? text.length : end + 3;
+            continue;
+        }
+        const nm = /^<([a-zA-Z][\w:.-]*)/.exec(text.slice(lt, lt + 100));
+        const parsed = nm && parseTag(text, lt + nm[0].length);
+        if (!parsed) {
+            i = lt + 1;
+            continue;
+        }
+        const tag = nm[1].toLowerCase();
+        let content = null;
+        i = parsed.end;
+        if ((tag === "script" || tag === "style") && !parsed.selfClosing) {
+            const close = lower.indexOf(`</${tag}`, i);
+            const stop = close < 0 ? text.length : close;
+            content = { start: i, text: text.slice(i, stop) };
+            i = stop;
+        }
+        yield { tag, attrs: parsed.attrs, index: lt, content };
+    }
+}
+
+/** An attribute's value when it is static text: quoted, unquoted, or a {"string literal"}; else null. */
+function staticValue(attr) {
+    if (!attr) return null;
+    if (attr.kind === "quoted" || attr.kind === "unquoted") return attr.value;
+    if (attr.kind === "template") return attr.value.includes("${") ? null : attr.value;
+    if (attr.kind === "expression") {
+        const lit = /^\s*(["'])((?:(?!\1)[^\\]|\\.)*)\1\s*$/.exec(attr.value);
+        return lit ? lit[2] : null;
+    }
+    return null;
+}
+
+const PREPROCESSED = /^(scss|sass|less|stylus|styl)$/i;
+
+/** The style blocks of a markup file that hold plain CSS. */
+const styleBlocks = (tags) => tags.filter((t) => t.tag === "style" && t.content && !PREPROCESSED.test(staticValue(t.attrs.get("lang")) || ""));
+
+function lintMarkup(text, rel, globalKeyframes) {
+    const findings = [];
+    let viewportMetas = 0;
+    const tags = [...scanTags(text, { astro: rel.endsWith(".astro") })];
+    const blocks = styleBlocks(tags);
+    const keyframes = new Map(globalKeyframes);
+    for (const b of blocks) for (const [name, props] of keyframeCaptures(b.content.text)) keyframes.set(name, props);
+    for (const b of blocks) findings.push(...lintCss(b.content.text, { firstLine: lineAt(text, b.content.start), keyframes }));
+    for (const t of tags) {
+        const line = lineAt(text, t.index);
+        if (t.tag === "meta" && (staticValue(t.attrs.get("name")) || "").toLowerCase() === "viewport") {
+            viewportMetas++;
+            const content = staticValue(t.attrs.get("content"));
+            const got = content ? content.split(",").map((s) => s.trim()).filter(Boolean).join(", ") : "";
+            if (got !== VIEWPORT_META) {
+                findings.push({ line, rule: "viewport-meta", message: `viewport is "${content ?? ""}"` });
+            }
+        }
+        const style = staticValue(t.attrs.get("style"));
+        if (style === null || /\{/.test(style)) continue;
+        const id = staticValue(t.attrs.get("id"));
+        const classes = staticValue(t.attrs.get("class"));
         const selector =
-            tag + (id ? `#${id[1]}` : "") + (classes ? classes[1].trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join("") : "");
-        for (const f of lintCss(`${selector}{${style[1]}}`, { firstLine: line })) {
+            t.tag +
+            (id && /^[\w-]+$/.test(id) ? `#${id}` : "") +
+            (classes && !/[{}]/.test(classes) ? classes.trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join("") : "");
+        for (const f of lintCss(`${selector}{${style}}`, { firstLine: line, keyframes })) {
             findings.push({ ...f, message: `style attribute: ${f.message}` });
         }
     }
@@ -464,11 +756,28 @@ function lintMarkup(text, rel) {
     return findings;
 }
 
-/** Lint one file's text. `file` is the path relative to client/, used for the tokens.css exemption. */
-export function lintText(file, text) {
+/** The keyframe captures of one file of any kind the lint reads. */
+export function fileKeyframes(file, text) {
     const rel = file.split(path.sep).join("/");
-    if (rel.endsWith(".css")) return lintCss(text, { isTokens: rel === TOKENS_FILE || rel.endsWith("/" + TOKENS_FILE) });
-    if (rel.endsWith(".astro") || rel.endsWith(".html")) return lintMarkup(text, rel);
+    if (rel.endsWith(".css")) return keyframeCaptures(text);
+    const out = new Map();
+    if (rel.endsWith(".astro") || rel.endsWith(".html")) {
+        for (const b of styleBlocks([...scanTags(text, { astro: rel.endsWith(".astro") })])) {
+            for (const [name, props] of keyframeCaptures(b.content.text)) out.set(name, props);
+        }
+    }
+    return out;
+}
+
+/**
+ * Lint one file's text. `file` is the path relative to client/, used for the
+ * tokens.css exemption. `keyframes` holds the keyframe captures of the other
+ * files (see fileKeyframes), so an animation defined elsewhere is checked too.
+ */
+export function lintText(file, text, { keyframes = new Map() } = {}) {
+    const rel = file.split(path.sep).join("/");
+    if (rel.endsWith(".css")) return lintCss(text, { isTokens: rel === TOKENS_FILE || rel.endsWith("/" + TOKENS_FILE), keyframes });
+    if (rel.endsWith(".astro") || rel.endsWith(".html")) return lintMarkup(text, rel, keyframes);
     return [];
 }
 
@@ -653,6 +962,84 @@ const FIXTURES = [
         expect: [],
     },
     {
+        name: "style attribute after an arrow-function attribute",
+        file: "src/x.astro",
+        css: '<button onClick={() => go()} style="z-index: 5"></button>\n',
+        expect: ["z-index"],
+    },
+    { name: "style attribute after a quoted >", file: "src/x.astro", css: '<div data-x="a>b" style="z-index: 5"></div>\n', expect: ["z-index"] },
+    {
+        name: "single-quoted style attribute",
+        file: "src/x.html",
+        css: "<div style='z-index: 5; height: 100vh'></div>\n",
+        expect: ["z-index", "viewport-height"],
+    },
+    {
+        name: "string-literal style expression",
+        file: "src/x.astro",
+        css: '<div id="board" style={"transform: scale(2)"}></div>\n',
+        expect: ["fixed-ancestor"],
+    },
+    {
+        name: "frontmatter, text and scripts are not markup",
+        file: "src/x.astro",
+        css:
+            "---\nconst xs: Array<string> = ['<div style=\"z-index: 5\">'];\nconst big = 2 > 1;\n---\n<p>{a<b}</p>\n" +
+            "<script>const s = '<div style=\"z-index: 5\">';</script>\n<div style=\"height: 100vh\"></div>\n",
+        expect: ["viewport-height"],
+        lines: { "viewport-height": 7 },
+    },
+    {
+        name: "an unquoted < ends a false tag, so the real tag after it is seen",
+        file: "src/x.astro",
+        css: '<p>{a<b} <meta name="viewport" content="width=device-width"></p>\n',
+        expect: ["viewport-meta"],
+    },
+    { name: ":hover inside :is()", file: "src/x.css", css: ".a:is(:hover, :focus-visible) { color: red; }", expect: ["hover-media"] },
+    {
+        name: ":where(body) and :is(.x, #board) are protected",
+        file: "src/x.css",
+        css: ":where(body) { overflow-x: hidden; } :is(.x, #board) { transform: scale(1.01); }",
+        expect: ["root-overflow", "fixed-ancestor"],
+    },
+    {
+        name: ":not(body) and .x:has(#board) are not",
+        file: "src/x.css",
+        css: "div:not(body) { overflow-x: hidden; } .x:has(#board) { transform: scale(1.01); }",
+        expect: [],
+    },
+    {
+        name: "animation of a transform on #board",
+        file: "src/x.css",
+        css: "#board { animation: wobble 1s ease-in-out infinite; } @keyframes wobble { to { transform: rotate(1deg); } }",
+        expect: ["fixed-ancestor"],
+    },
+    {
+        name: "animation with its keyframes in another file",
+        file: "src/x.css",
+        css: "body { animation-name: drift; }",
+        others: { "src/k.astro": "<style>\n@keyframes drift { from { filter: blur(1px); } }\n</style>\n" },
+        expect: ["fixed-ancestor"],
+    },
+    { name: "body transform-style: preserve-3d", file: "src/x.css", css: "body { transform-style: preserve-3d; }", expect: ["fixed-ancestor"] },
+    { name: "#board offset-path", file: "src/x.css", css: '#board { offset-path: path("M0 0 L10 0"); }', expect: ["fixed-ancestor"] },
+    {
+        name: "constant(safe-area-inset-bottom)",
+        file: "src/x.css",
+        css: ".a { padding-bottom: constant(safe-area-inset-bottom); }",
+        expect: ["safe-area"],
+    },
+    { name: "font shorthand with a raw fallback", file: "src/x.css", css: ".a { font: 600 12px/1 var(--sp-font-ui), Arial; }", expect: ["font-family"] },
+    { name: "@import with a range media query", file: "src/x.css", css: '@import url("a.css") (width <= 700px);', expect: ["media-range"] },
+    {
+        name: "clean markup with expressions",
+        file: "src/x.astro",
+        css:
+            '---\nconst open = true;\n---\n<div class="a" onClick={() => (open ? "x>y" : `${open}>`)} {...rest}\n' +
+            '  style="z-index: var(--z-sheet); height: var(--sp-vh)" style2={{ zIndex: 5 }}></div>\n',
+        expect: [],
+    },
+    {
         name: "clean file",
         file: "src/x.css",
         css: [
@@ -674,6 +1061,10 @@ const FIXTURES = [
             "@supports (height: 100dvh) { .a { color: red; } }",
             "@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }",
             '.c[data-x="a&b"]::after { content: "&:hover { }"; }',
+            "body { animation: fade-in 200ms ease-out both; } @keyframes fade-in { from { opacity: 0; } }",
+            ".d { background: url(/img/*x.png) no-repeat; }",
+            '@import url("print.css") print;',
+            ".e:not(:focus) { color: red; }",
         ].join("\n"),
         expect: [],
     },
@@ -691,7 +1082,9 @@ function selfTest() {
     let failed = 0;
     const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
     for (const fx of FIXTURES) {
-        const findings = lintText(fx.file, fx.css);
+        const keyframes = new Map();
+        for (const [file, text] of Object.entries(fx.others || {})) for (const [k, v] of fileKeyframes(file, text)) keyframes.set(k, v);
+        const findings = lintText(fx.file, fx.css, { keyframes });
         const got = [...new Set(findings.map((f) => f.rule))].sort();
         const want = [...new Set(fx.expect)].sort();
         let ok = sameSet(got, want);
@@ -780,6 +1173,13 @@ function main(argv) {
         : SCAN_DIRS.filter((d) => existsSync(path.join(CLIENT, d))).flatMap((d) => walk(path.join(CLIENT, d), []));
     const allow = loadAllowlist();
     const rel = (f) => path.relative(CLIENT, f).split(path.sep).join("/");
+    // Keyframes from the whole tree, so an animation on a protected element
+    // is checked even when its @keyframes live in another file.
+    const keyframes = new Map();
+    const tree = SCAN_DIRS.filter((d) => existsSync(path.join(CLIENT, d))).flatMap((d) => walk(path.join(CLIENT, d), []));
+    for (const file of new Set([...tree, ...files])) {
+        for (const [name, props] of fileKeyframes(rel(file), readFileSync(file, "utf8"))) keyframes.set(name, props);
+    }
 
     let errors = 0;
     let suppressed = 0;
@@ -787,7 +1187,7 @@ function main(argv) {
     const seenRules = new Map();
     for (const file of files.sort()) {
         const name = rel(file);
-        const findings = lintText(name, readFileSync(file, "utf8"));
+        const findings = lintText(name, readFileSync(file, "utf8"), { keyframes });
         if (name === TOKENS_FILE) {
             for (const c of contrastChecks(readFileSync(file, "utf8"))) {
                 if (c.kind === "required" && !c.ok) {
