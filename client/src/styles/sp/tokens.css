@@ -145,7 +145,7 @@
   --sp-gutter: 8px;
   --sp-content-max: 640px;
 
-  --sp-hud-h: 48px; /* 76px with 3-4 players, 56px on T, D and W */
+  --sp-hud-h: 48px; /* 76px with 3-4 players, 56px on T, D and W (see below) */
   --sp-dock-h: 140px; /* bank band + holdings + action bar + 8px of gaps */
   --sp-bank-h: 48px;
   --sp-hold-h: 32px; /* 44px in putback mode: use --sp-tap there */
@@ -186,9 +186,26 @@ html[data-sp-test-insets] {
 }
 
 /* 3-4 players: a 28px score-strip row is added to the HUD on P, and a 2x2
-   score-chip grid to the left-rail HUD on L. */
+   score-chip grid to the left-rail HUD on L.
+
+   The store writes data-sp-players on body (spec section 10), but the
+   values must also resolve on html: html inherits from :root, not from
+   body, and html-level rules such as scroll-padding-top read --sp-hud-h
+   there. So the override is keyed on the root element too, in two ways:
+   - html[data-sp-players], a mirror the store sets next to the body one;
+   - :root:has(> body[data-sp-players]), which needs no mirror where :has()
+     works. It is a rule of its own because a browser without :has() drops
+     every selector in a list that contains it.
+   The body selectors cover a browser with neither. */
+:root[data-sp-players="3"],
+:root[data-sp-players="4"],
 body[data-sp-players="3"],
 body[data-sp-players="4"] {
+  --sp-hud-h: 76px;
+  --sp-l-hud-h: 108px;
+}
+:root:has(> body[data-sp-players="3"]),
+:root:has(> body[data-sp-players="4"]) {
   --sp-hud-h: 76px;
   --sp-l-hud-h: 108px;
 }
@@ -216,8 +233,14 @@ body[data-sp-players="4"] {
 
 /* T: tablet (V5 108.7px cards). */
 @media (min-width: 700px) and (min-height: 501px) {
+  /* One HUD row at any player count. Each selector has the specificity of
+     its 3-4 player counterpart above and comes later, so it wins. */
   :root,
+  :root[data-sp-players],
   body[data-sp-players] {
+    --sp-hud-h: 56px;
+  }
+  :root:has(> body[data-sp-players]) {
     --sp-hud-h: 56px;
   }
 
