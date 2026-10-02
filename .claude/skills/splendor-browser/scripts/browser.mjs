@@ -21,15 +21,26 @@
  * a private file in the profile, every descendant inherits it, and lsof on
  * that exact file finds them too. A file, not a pipe: an inherited pipe would
  * keep this Node process from exiting.
+ *
+ * The same shutdown runs on SIGINT, SIGTERM and SIGHUP (tmux kill-session, a
+ * closed terminal). A write error on stdout or stderr (EPIPE when the output
+ * is piped to `head`) is swallowed, so the run carries on and still cleans
+ * up. Anything else that ends the process early (an uncaught exception,
+ * process.exit) triggers a synchronous SIGKILL sweep from the 'exit' hook.
+ * Only SIGKILL of this Node process skips all of that; for that case every
+ * profile records its owner PID, and the next launch sweeps any profile under
+ * the same root whose owner is gone.
  */
 import { spawn, execFileSync } from "node:child_process";
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, mkdirSync, realpathSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { CdpConnection, CdpError, sleep } from "./cdp.mjs";
 
 export const DEFAULT_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PROFILE_PREFIX = "splendor-browser-";
+/** Written into every profile we launch: { pid, keepProfile, createdAt }. */
+const OWNER_NAME = "splendor-browser-owner.json";
 
 const UA = {
     ios: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
@@ -181,12 +192,26 @@ const describePids = (pids) => {
 };
 
 /** @param {string} msg */
-const note = (msg) => process.stderr.write(`[splendor-browser] ${msg}\n`);
+const note = (msg) => { try { process.stderr.write(`[splendor-browser] ${msg}\n`); } catch { /* stderr gone */ } };
+
+let stdioGuarded = false;
+/**
+ * Keep a broken stdout or stderr from killing the process before it cleans
+ * up. `probe.mjs | head -3` closes the pipe after three lines, and the next
+ * write raises EPIPE as an 'error' event, which crashes Node when nobody
+ * listens. A closed terminal (SIGHUP) raises EIO the same way. The output is
+ * lost either way; the run goes on and the browser is still closed.
+ */
+export function guardStdio() {
+    if (stdioGuarded) return;
+    stdioGuarded = true;
+    for (const stream of [process.stdout, process.stderr]) stream.on("error", () => { /* reader went away */ });
+}
 
 export class Browser {
     /**
      * @param {CdpConnection} conn
-     * @param {{ mode: "launch" | "attach", child?: import("node:child_process").ChildProcess, profileDir?: string, ownsProfile?: boolean, keepProfile?: boolean, version?: any }} info
+     * @param {{ mode: "launch" | "attach", child?: import("node:child_process").ChildProcess, profileDir?: string, ownsProfile?: boolean, keepProfile?: boolean, version?: any, exitHook?: () => void }} info
      */
     constructor(conn, info) {
         this.conn = conn;
@@ -196,6 +221,7 @@ export class Browser {
         this.ownsProfile = !!info.ownsProfile;
         this.keepProfile = !!info.keepProfile;
         this.version = info.version;
+        this.exitHook = info.exitHook;
         /** @type {Set<string>} */
         this.contexts = new Set();
         /** @type {Set<Page>} */
@@ -254,6 +280,7 @@ export class Browser {
             await Promise.race([new Promise((r) => child.once("exit", r)), sleep(5000)]);
         }
         if (this.profileDir) await sweepProfile(this.profileDir, { remove: this.ownsProfile && !this.keepProfile, graceMs: 3000 });
+        if (this.exitHook) process.removeListener("exit", this.exitHook);
     }
 }
 
@@ -293,14 +320,68 @@ export async function sweepProfile(profileDir, opts = {}) {
     return left;
 }
 
+/**
+ * The last-resort cleanup for a process that is exiting without having
+ * closed its browser. Only synchronous work is possible in an 'exit'
+ * handler, so everything still running from the profile gets SIGKILL (PIDs
+ * from a fresh listing, as in sweepProfile) and the profile is deleted.
+ * @param {string} profileDir @param {{ remove: boolean, child?: import("node:child_process").ChildProcess }} opts
+ */
+function sweepProfileNow(profileDir, opts) {
+    try { if (opts.child && opts.child.exitCode === null && opts.child.signalCode === null) opts.child.kill("SIGKILL"); } catch { /* gone */ }
+    try {
+        for (const pid of ownedPids(profileDir)) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+    } catch { /* ps or lsof failed: nothing more we can do here */ }
+    if (opts.remove) {
+        try { assertOwnProfileDir(profileDir); rmSync(profileDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+}
+
+/** Whether a process with this PID exists (EPERM: it exists, owned by someone else). @param {number} pid */
+const pidAlive = (pid) => {
+    try { process.kill(pid, 0); return true; } catch (err) { return /** @type {any} */ (err).code === "EPERM"; }
+};
+
+/**
+ * Sweep profiles under `root` that an earlier run left behind: those whose
+ * owner file names a PID that no longer exists (that run was SIGKILLed).
+ * Profiles without an owner file are never touched: they may belong to a run
+ * that has just created its directory, or predate owner files. A profile
+ * kept with --keep-profile loses only its processes and its owner file.
+ * @param {string} root an existing directory (realpath)
+ */
+export async function sweepStaleProfiles(root) {
+    /** @type {string[]} */
+    let names = [];
+    try { names = readdirSync(root).filter((n) => n.startsWith(PROFILE_PREFIX)); } catch { return []; }
+    const swept = [];
+    for (const name of names) {
+        const dir = join(root, name);
+        /** @type {any} */
+        let owner = null;
+        try { owner = JSON.parse(readFileSync(join(dir, OWNER_NAME), "utf8")); } catch { continue; }
+        const pid = Number(owner?.pid);
+        if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid || pidAlive(pid)) continue;
+        try { assertOwnProfileDir(dir); } catch { continue; }
+        note(`sweeping ${dir}, left behind by PID ${pid}, which is gone`);
+        await sweepProfile(dir, { remove: !owner.keepProfile }).catch(() => {});
+        if (owner.keepProfile) rmSync(join(dir, OWNER_NAME), { force: true });
+        swept.push(dir);
+    }
+    return swept;
+}
+
 export async function launchChrome(opts = {}) {
     const chrome = opts.chrome || process.env.SPLENDOR_CHROME || DEFAULT_CHROME;
     if (!existsSync(chrome)) throw new Error(`Chrome not found at ${chrome}; pass --chrome=PATH or set SPLENDOR_CHROME`);
     const root = resolve(opts.profileRoot || tmpdir());
     mkdirSync(root, { recursive: true });
     // realpath so the argument Chrome sees matches what ps prints (/var -> /private/var).
-    const profileDir = mkdtempSync(join(realpathSync(root), PROFILE_PREFIX));
+    const realRoot = realpathSync(root);
+    await sweepStaleProfiles(realRoot);
+    const profileDir = mkdtempSync(join(realRoot, PROFILE_PREFIX));
     assertOwnProfileDir(profileDir);
+    writeFileSync(join(profileDir, OWNER_NAME), `${JSON.stringify({ pid: process.pid, keepProfile: !!opts.keepProfile, createdAt: new Date().toISOString() })}\n`, { mode: 0o600 });
     const args = [
         ...(opts.headless === false ? [] : ["--headless=new"]),
         `--user-data-dir=${profileDir}`,
@@ -323,7 +404,8 @@ export async function launchChrome(opts = {}) {
     closeSync(stderrFd); // only Chrome and its descendants hold it now
     const stderrTail = () => { try { return readFileSync(stderrFile, "utf8").slice(-2000); } catch { return "(no stderr)"; } };
     const killOnExit = () => { try { if (child.exitCode === null) child.kill("SIGKILL"); } catch { /* ignore */ } };
-    process.once("exit", killOnExit);
+    const exitHook = () => sweepProfileNow(profileDir, { remove: !opts.keepProfile, child });
+    process.once("exit", exitHook);
 
     const portFile = join(profileDir, "DevToolsActivePort");
     const deadline = Date.now() + (opts.timeoutMs ?? 20_000);
@@ -341,11 +423,12 @@ export async function launchChrome(opts = {}) {
         await sleep(300);
         const tail = stderrTail();
         await sweepProfile(profileDir, { remove: !opts.keepProfile }).catch(() => {});
+        process.removeListener("exit", exitHook);
         throw new Error(`Chrome did not start (exit ${child.exitCode}). stderr:\n${tail}`);
     }
     const conn = await CdpConnection.open(wsUrl);
     const version = await conn.send("Browser.getVersion");
-    const browser = new Browser(conn, { mode: "launch", child, profileDir, ownsProfile: true, keepProfile: opts.keepProfile, version });
+    const browser = new Browser(conn, { mode: "launch", child, profileDir, ownsProfile: true, keepProfile: opts.keepProfile, version, exitHook });
     return browser;
 }
 
@@ -371,16 +454,28 @@ export async function attachBrowser(cdpUrl) {
  * @param {{ cdp?: string, chrome?: string, profileRoot?: string, keepProfile?: boolean, noProxy?: boolean, headful?: boolean }} opts
  */
 export async function getBrowser(opts) {
+    guardStdio();
     const browser = opts.cdp ? await attachBrowser(opts.cdp) : await launchChrome({
         chrome: opts.chrome, profileRoot: opts.profileRoot, keepProfile: opts.keepProfile,
         noProxy: opts.noProxy, headless: !opts.headful,
     });
-    const shutdown = (/** @type {string} */ sig) => {
+    // The first signal closes the browser (bounded: about 20 s at worst) and
+    // exits 128 + signal number. Repeats are ignored while that runs, except
+    // a second Ctrl-C, which exits at once (the 'exit' hook still SIGKILLs
+    // what it can find).
+    const codes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
+    let closing = false;
+    const shutdown = (/** @type {keyof typeof codes} */ sig) => {
+        if (closing) {
+            if (sig === "SIGINT") { note("second SIGINT: exiting without waiting"); process.exit(codes[sig]); }
+            note(`${sig}: already closing the browser`);
+            return;
+        }
+        closing = true;
         note(`${sig}: closing the browser`);
-        browser.close().finally(() => process.exit(130));
+        browser.close().finally(() => process.exit(codes[sig]));
     };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+    for (const sig of /** @type {(keyof typeof codes)[]} */ (Object.keys(codes))) process.on(sig, shutdown);
     return browser;
 }
 

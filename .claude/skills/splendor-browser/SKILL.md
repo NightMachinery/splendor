@@ -183,8 +183,19 @@ cannot screenshot or emulate touch.
   and `lsof` on Chrome's private stderr file in the profile, which every
   process Chrome spawns inherits. The second catches `chrome_crashpad_handler`
   and `GoogleUpdater`, which macOS Chrome starts without the profile argument
-  and which otherwise linger for minutes or days. Ctrl-C does the same. To
-  double-check afterwards:
+  and which otherwise linger for minutes or days.
+- The same cleanup runs on Ctrl-C (SIGINT), SIGTERM and SIGHUP (`tmux
+  kill-session`, a closed terminal); the exit code is then 128 plus the
+  signal number. A second Ctrl-C exits at once. Piping the output to `head`
+  is safe: write errors on stdout and stderr (EPIPE) are ignored, so the run
+  finishes, writes its manifest and cleans up. An uncaught exception or
+  another early exit still SIGKILLs everything from the profile and deletes
+  it, from Node's `exit` hook.
+- `kill -9` of the Node process is the one case that leaks: Chrome and its
+  profile stay behind. Every profile records its owner PID in
+  `splendor-browser-owner.json`, and the next launch with the same profile
+  root sweeps every profile whose owner is gone (a `--keep-profile` one keeps
+  its files and loses only its processes). To double-check afterwards:
   `ps -axww -o pid=,command= | grep -F -- '--user-data-dir=' | grep -F splendor-browser-`.
 - `--cdp=URL` attaches to a browser that already listens for CDP instead.
   Even then it only creates its own contexts and tabs and disposes them; it
