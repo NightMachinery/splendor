@@ -507,6 +507,9 @@ const beforeGameStateRequest = async () => {
     await SETTINGS.verifyCredentials();
     if(boardBooted) return;
     boardBooted = true;
+    if(SETTINGS.migrateLinkRejected()) {
+        showError("This migrate link is no longer valid, so the board uses your own account.", 8000);
+    }
     const { session, hash } = await fetchLobbySession(getSessionId());
     currentLobbySession = session;
     if(hash) lobbySessionPoll.setHash(hash);

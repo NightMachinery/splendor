@@ -34,9 +34,34 @@ const INTERNAL_SETTINGS = {
  * Define the settings.
  */
 
+/**
+ * Migrate token that the Lobby Service rejected on this page (invalid or
+ * expired link). From then on the page uses the local identity for both the
+ * username and the access token, instead of mixing the local username with
+ * the dead room token (which the GS answers with a 401).
+ */
+let rejectedMigrateToken = null;
+
 const getRoomMigrateToken = () => {
     const params = new URL(document.location.toString()).searchParams;
-    return params.get("migrate");
+    const token = params.get("migrate");
+    return token && token === rejectedMigrateToken ? null : token;
+};
+
+/**
+ * Remember that the LS rejected this page's migrate token, and drop the
+ * parameter from the address bar so that a reload or a copied URL does not
+ * try the dead link again.
+ */
+const rejectMigrateToken = (token) => {
+    rejectedMigrateToken = token;
+    try {
+        const url = new URL(document.location.toString());
+        url.searchParams.delete("migrate");
+        window.history.replaceState(window.history.state, "", url.toString());
+    } catch(err) {
+        // no history API (tests) or a sandboxed frame: the flag is enough
+    }
 };
 
 const getRoomId = () => {
@@ -168,7 +193,9 @@ const checkCredentialsNow = async (options = {}) => {
         if(resp.status >= 500 || resp.status === 429) {
             throw new TransientAuthError(`Lobby service answered ${resp.status} while checking the migrate link.`, resp.status);
         }
-        // an invalid or expired migrate link falls back to the local identity
+        // An invalid or expired migrate link (the LS answers 400): use the
+        // local identity for the whole page, token and username alike.
+        rejectMigrateToken(roomToken);
     }
 
     let displayName = requestedDisplayName || localStorage.getItem("displayName");
@@ -279,7 +306,8 @@ export const SETTINGS = {
     },
 
     /**
-     * Get the access token stored in local storage
+     * The access token: the migrate token while the page URL carries a
+     * migrate link the LS has not rejected, otherwise the one in local storage.
      * @returns string | null
      */
     getAccessToken: () => {
@@ -377,6 +405,13 @@ export const SETTINGS = {
     },
 
     hasLocalIdentity: () => !!localStorage.getItem("displayName"),
+
+    /**
+     * Whether the LS rejected the migrate link this page was opened with, so
+     * that the page now runs as the local identity.
+     * @returns {boolean}
+     */
+    migrateLinkRejected: () => rejectedMigrateToken !== null,
 
     /**
      * Verify that the user is logged in (see checkCredentialsNow).

@@ -2,7 +2,9 @@
 // (SETTINGS.verifyCredentials and isDefinitiveAuthRejection): the stored
 // identity survives every reply that is not a definitive rejection, the
 // check is cached once per page load, a hung request times out instead of
-// freezing the page. See docs/client-architecture.md, "Identity model".
+// freezing the page, and a rejected migrate link uses the local identity
+// for the token as well as the username. See docs/client-architecture.md,
+// "Identity model".
 import { test, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { installFakeBrowser, flush } from "./client-fake-browser.mjs";
@@ -154,4 +156,62 @@ test("a reply whose body never arrives also times out", async (t) => {
     t.mock.timers.tick(IDENTITY_REQUEST_TIMEOUT_MS);
     await assert.rejects(pending, TransientAuthError);
     assert.deepEqual(identityKeys(), STORED);
+});
+
+test("a valid migrate link uses the room user and the room token", async () => {
+    storeIdentity();
+    browser.setUrl("http://splendor.test/gameboard/?sessionId=42&migrate=room-ok");
+    browser.fetch.handler = (call) => {
+        assert.equal(new URL(call.url).pathname, "/ls/api/sessions/42/migrate/room-ok");
+        return { status: 200, body: { name: "bob", displayName: "Bob", preferredColour: "" } };
+    };
+    await SETTINGS.verifyCredentials();
+    assert.equal(browser.fetch.calls.length, 1, "no local-auth for a migrate link");
+    assert.equal(SETTINGS.getUsername(), "bob");
+    assert.equal(SETTINGS.getAccessToken(), "room-ok");
+    assert.equal(SETTINGS.migrateLinkRejected(), false);
+    assert.equal(sessionStorage.getItem("roomUser:42:room-ok"), "bob");
+});
+
+test("a migrate check that fails with 502 is transient and keeps the link", async () => {
+    storeIdentity();
+    browser.setUrl("http://splendor.test/gameboard/?sessionId=42&migrate=room-502");
+    browser.fetch.handler = () => ({ status: 502, body: "" });
+    await assert.rejects(SETTINGS.verifyCredentials(), TransientAuthError);
+    assert.equal(SETTINGS.getAccessToken(), "room-502");
+    assert.match(browser.getUrl(), /migrate=room-502/);
+});
+
+test("a rejected migrate link falls back to the local identity for the token and the username", async () => {
+    storeIdentity();
+    browser.setUrl("http://splendor.test/gameboard/?sessionId=42&migrate=room-dead");
+    browser.fetch.handler = (call) => {
+        if(call.url.includes("/migrate/")) return { status: 400, body: "Invalid migrate token for room." };
+        return localAuthOk(call);
+    };
+    await SETTINGS.verifyCredentials();
+    assert.equal(browser.fetch.calls.length, 2, "migrate check, then local-auth");
+    assert.equal(SETTINGS.migrateLinkRejected(), true);
+    assert.equal(SETTINGS.getUsername(), "alice");
+    assert.equal(SETTINGS.getAccessToken(), STORED.accessToken, "the dead room token is no longer sent");
+    assert.equal(browser.getUrl(), "http://splendor.test/gameboard/?sessionId=42", "the dead link left the address bar");
+});
+
+test("the fallback holds even where the address bar cannot be rewritten", async () => {
+    storeIdentity();
+    browser.setUrl("http://splendor.test/gameboard/?sessionId=43&migrate=room-dead-2");
+    const replaceState = window.history.replaceState;
+    window.history.replaceState = () => { throw new Error("SecurityError"); };
+    try {
+        browser.fetch.handler = (call) => {
+            if(call.url.includes("/migrate/")) return { status: 400, body: "Migrated user no longer exists." };
+            return localAuthOk(call);
+        };
+        await SETTINGS.verifyCredentials();
+    } finally {
+        window.history.replaceState = replaceState;
+    }
+    assert.match(browser.getUrl(), /migrate=room-dead-2/);
+    assert.equal(SETTINGS.getUsername(), "alice");
+    assert.equal(SETTINGS.getAccessToken(), STORED.accessToken);
 });
