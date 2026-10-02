@@ -434,6 +434,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Long-poll the list of sessions (see createLongPoll in settings.js).
     const sessionsPoll = createLongPoll({
         name: "lobby",
+        // a hidden lobby catches up on visibilitychange
+        pauseWhenHidden: true,
         url: (hash) => {
             const url = new URL(`${SETTINGS.getLS_API()}/api/sessions`);
             url.search = new URLSearchParams({ hash }).toString();

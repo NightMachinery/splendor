@@ -35,6 +35,8 @@ const makeEventTarget = () => {
  * A scripted fetch. Each call is recorded in `calls` and answered by
  * `handler(call)`, which returns a reply description or a Promise of one:
  * - {status, body}: a Response with that status and text body;
+ * - {status, body, delayMs}: the same, answered after delayMs like a held
+ *   long-poll (an abort during the wait rejects with an AbortError);
  * - "hang": never answers, rejects with an AbortError when aborted;
  * - "hang-body": headers arrive (status 200), the body never does;
  * - "network": rejects with a TypeError, like a refused connection.
@@ -63,6 +65,14 @@ export const makeFetch = () => {
         }
         if(reply === "hang-body") {
             return { ok: true, status: 200, text: () => untilAborted(init.signal), json: () => untilAborted(init.signal) };
+        }
+        if(reply.delayMs) {
+            // a held request: answered after delayMs (on the possibly mocked
+            // setTimeout), or rejected with an AbortError when aborted first
+            await Promise.race([
+                new Promise(resolve => setTimeout(resolve, reply.delayMs)),
+                untilAborted(init.signal),
+            ]);
         }
         call.answered = true;
         const status = reply.status;

@@ -56,9 +56,9 @@ Until this fix the client sent a SHA-256 hash (or a 32-bit string hash over http
 
 ### The poll loop
 
-`createLongPoll(options)` in `settings.js` runs one loop. The options are `name`, `url(hash)`, `onUpdate(data, text, hash)` and, optionally, `beforeRequest()`, `onGone(status, text)`, `onError(err, info)` and `indicator`. One cycle:
+`createLongPoll(options)` in `settings.js` runs one loop. The options are `name`, `url(hash)`, `onUpdate(data, text, hash)` and, optionally, `beforeRequest()`, `onGone(status, text)`, `onError(err, info)`, `indicator` and `pauseWhenHidden`. One cycle:
 
-1. If the tab is hidden, stop here and wait (see below).
+1. If the loop has `pauseWhenHidden` and the tab is hidden, stop here and wait (see below).
 2. Run `beforeRequest()`. The pages use it for the cached identity check. An `AuthRejectedError` stops the loop, because the login page is being shown. Any other error counts as a failure.
 3. Send the GET with the last rendered hash (`-` at first, which never matches). The request is aborted after 50 s, longer than any server hold.
 4. Handle the reply:
@@ -73,7 +73,7 @@ Timing rules:
 
 - A new request never starts less than 750 ms after the previous one started. Against the real servers this never delays anything, since held requests take 30 s. It stops any server that answers at once (a mock, a misconfigured proxy, a future hash mismatch) from turning the loop into a hot loop.
 - Backoff is exponential with "equal jitter": after the n-th consecutive failure the wait is a random value between d/2 and d, with d = min(30 s, 1 s × 2^(n-1)). So 0.5 to 1 s, then 1 to 2 s, 2 to 4 s, and so on up to 15 to 30 s. Any successful reply resets it.
-- While `document.hidden` is true no new request starts. A request already in flight may finish and render. On `visibilitychange` to visible and on `online`, every loop aborts its in-flight request (it may sit on a connection that died during sleep or a network change) and polls at once; a loop waiting out a backoff skips the rest of it. For tests that drive several players in background tabs, `localStorage.setItem("splendorPollWhenHidden", "1")` keeps hidden tabs polling.
+- Hidden tabs: a loop created with `pauseWhenHidden: true` starts no new request while `document.hidden` is true (a request already in flight may finish and render). Other loops keep polling, which costs one held request every 30 s. The board's game-state loop is one of those, so a waiting player's background tab still learns that it is their turn; the planned turn title and favicon (UX spec, section 5.2) depend on it. The Lobby Service loops pause, because nothing in them needs a background tab, and the lobby's planned launch banner waits for `visibilitychange` anyway. On `visibilitychange` to visible and on `online`, every loop aborts its in-flight request (it may sit on a connection that died during sleep or a network change) and polls at once; a loop waiting out a backoff skips the rest of it. For tests that drive several players in background tabs, `localStorage.setItem("splendorPollWhenHidden", "1")` keeps the pausing loops polling too.
 - The whole cycle is wrapped, so no exception can end the loop by accident.
 
 Connection problems (network errors, 5xx, non-JSON replies, transient identity failures) do not toast. Instead a shared element `#splendor-connection-indicator` (class `connection-indicator`, `role="status"`) shows "Reconnecting..." in the bottom right corner, styled inline for now so a later UX pass can restyle it. It disappears as soon as every loop has a successful reply again. Errors a user can act on still toast once per distinct message: on the board, a 400 from the GS (the game no longer exists, for example after a GS restart) and a render failure.
@@ -85,7 +85,7 @@ Steady-state load: each loop keeps one request open and renews it every 30 s, pl
 - Lobby: one loop on `GET /ls/api/sessions?hash=`. Its `onUpdate` re-renders the session table. The lobby's create, join, leave, delete and launch requests show an error toast on failure (including an unreachable server), and a 401 drops the identity cache so the next action re-verifies. The avatar and role (`getUserDetail`) retry with the same backoff while the server is unreachable, without toasts.
 - Lobby, "Load a Game" tab (`lobby-saves.js`): not a poll. Each click lists the saves of every version in `GAME_VERSION_TO_BOARD` from the LS, joins them with the GS details from `GET /gs/api/saves` (name, creator, timestamp), and shows only saves both services know. A save the GS lacks used to crash the timestamp sort and empty the list; an unreachable GS now just gives no rows instead of a raw `TypeError` toast.
 - Board: two loops.
-  - The game-state loop (`board`) on `GET /gs/api/sessions/<id>?hash=`. Its first cycle verifies the identity and fetches the lobby session once, so player aliases are known before the first render.
+  - The game-state loop (`board`) on `GET /gs/api/sessions/<id>?hash=`. Its first cycle verifies the identity and fetches the lobby session once, so player aliases are known before the first render. It keeps polling in a hidden tab. anime.js suspends while the page is hidden, so an animation started then would play, and reveal its card or token count, only after the tab is shown, possibly out of order with later ones. A render in a hidden tab therefore skips the card and token animations and shows the end state at once. Each token count span also keeps the latest count in `data-count`, so an animation from an earlier render that finishes late cannot put back an older number.
   - The lobby-session loop (`board-lobby-session`) on `GET /ls/api/sessions/<id>?hash=`. It refreshes aliases, observer and moderator badges and the moderation buttons the moment they change, independently of game moves. It does not drive the indicator, and it stops when the LS answers 400, which happens once the game is over and the GS has deleted the LS session.
 
 ## Game versions
@@ -116,7 +116,7 @@ On a board page, after every successful render, `document.body` carries:
 
 On the lobby page, `document.body.dataset.splendorLobbyReady` becomes `"1"` after the first successful render of the session list.
 
-On every page that polls, `document.body.dataset.splendorConnection` is `"ok"` or `"reconnecting"`, mirroring the indicator. It is informational and is first set when a loop reports its first outcome.
+On every page that polls, `document.body.dataset.splendorConnection` is `"ok"` or `"reconnecting"`, mirroring the indicator. It is informational and is first set when a loop that drives the indicator (the lobby's session list, the board's game state) reports its first outcome, whatever that outcome is. A reply the loop cannot use (a 400, or a state that fails to render) still means the server answered, so it counts as `"ok"`.
 
 In Playwright these read naturally as `page.waitForFunction(() => document.body.dataset.splendorReady === "1")` or `expect(page.locator("body")).toHaveAttribute("data-splendor-turn", "alice")`.
 

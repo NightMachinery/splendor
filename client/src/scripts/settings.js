@@ -510,8 +510,9 @@ export const boardPathForVersion = (version) => {
  *   errors, 5xx, non-JSON replies, client errors and render errors;
  * - the stored hash updated only after onUpdate() rendered successfully, so a
  *   failed render is retried with the same state;
- * - no new request while document.hidden, and an immediate fresh request on
- *   visibilitychange (visible) and online;
+ * - optionally (pauseWhenHidden) no new request while document.hidden; every
+ *   loop sends an immediate fresh request on visibilitychange (visible) and
+ *   online;
  * - a shared "Reconnecting..." indicator instead of error toasts for
  *   connection problems.
  * ------------------------------------------------------------------------ */
@@ -535,8 +536,9 @@ export const backoffDelay = (streak) => {
 };
 
 /**
- * Tests (and anyone debugging two players in two tabs) can keep hidden tabs
- * polling with localStorage.setItem("splendorPollWhenHidden", "1").
+ * Tests (and anyone debugging two players in two tabs) can keep the loops
+ * that pause in hidden tabs polling with
+ * localStorage.setItem("splendorPollWhenHidden", "1").
  */
 const pollWhenHidden = () => {
     try {
@@ -633,9 +635,16 @@ export class PollError extends Error {
  *   "non-json", "auth", "client" or "render".
  * @param {boolean} [options.indicator=true] whether connection failures of
  *   this loop show the "Reconnecting..." indicator
+ * @param {boolean} [options.pauseWhenHidden=false] send no new request while
+ *   the tab is hidden (resumed on visibilitychange). Leave it off for state a
+ *   background tab must still notice, such as the board's game state, so that
+ *   a waiting player's tab learns that it is their turn.
  */
 export const createLongPoll = (options) => {
-    const { name, url, onUpdate, beforeRequest = null, onGone = null, onError = null, indicator = true } = options;
+    const {
+        name, url, onUpdate, beforeRequest = null, onGone = null, onError = null, indicator = true,
+        pauseWhenHidden = false,
+    } = options;
     let hash = "-";
     let started = false;
     let stopped = false;
@@ -656,7 +665,9 @@ export const createLongPoll = (options) => {
     const failed = (kind, err, status = 0) => {
         errorStreak++;
         const connectionProblem = kind === "network" || kind === "server" || kind === "non-json" || kind === "auth";
-        if(indicator && connectionProblem) setReconnecting(name, true);
+        // A client or render failure still means the server answered, so it
+        // clears the indicator (and sets data-splendor-connection on a first outcome).
+        if(indicator) setReconnecting(name, connectionProblem);
         if(errorStreak === 1 || !connectionProblem) {
             console.warn(`[poll:${name}] ${kind} problem (retrying with backoff): ${err && err.message ? err.message : err}`);
         }
@@ -762,7 +773,7 @@ export const createLongPoll = (options) => {
     const cycle = async () => {
         timer = null;
         if(stopped) return;
-        if(pageHidden()) return; // resumed by wake() on visibilitychange
+        if(pauseWhenHidden && pageHidden()) return; // resumed by wake() on visibilitychange
         running = true;
         let delay;
         try {

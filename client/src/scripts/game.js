@@ -17,6 +17,16 @@ let currentLobbySession = null;
 const getSessionId = () => (new URL(document.location)).searchParams.get("sessionId");
 
 /**
+ * The game-state poll keeps running in a hidden tab, so that a waiting
+ * player's background tab learns that it is their turn. anime.js suspends
+ * while the page is hidden, so an animation started then would only play
+ * (and only reveal its card or count) once the tab is visible again, and
+ * several of them could finish out of order. Renders in a hidden tab
+ * therefore skip the animations and show the end state at once.
+ */
+const animationsSuspended = () => typeof document !== "undefined" && document.hidden;
+
+/**
  * Whether a parsed reply looks like a Lobby Service session (and not, say, a
  * game state that a test mock served for the same URL pattern).
  */
@@ -79,17 +89,23 @@ const updateTokensCount = (parentSelector, tokenInfo, bonusInfo = null) => {
     const parentNode = document.querySelector(parentSelector);
 
     const setTokenInfo = (elm, color) => {
-        // set token count
-        const updateText = () => elm.textContent = tokenInfo[color];
+        // The count the latest render asked for. An animation from an earlier
+        // render that finishes later must not put back an older count, so the
+        // text is always set from here, and deltas are taken from it too.
+        const previousTarget = elm.dataset.count !== undefined ? parseInt(elm.dataset.count) : parseInt(elm.textContent);
+        elm.dataset.count = String(tokenInfo[color]);
+        const updateText = () => elm.textContent = elm.dataset.count;
 
         // set bonus
         if(bonusInfo) {
             // get bonus container
             elm.closest(".bonus-container").querySelector(".bonus-icon > span").textContent = bonusInfo[color];
 
-            const hasCount = parseInt(elm.textContent);
+            const hasCount = previousTarget;
             const newCount = tokenInfo[color];
-            if(hasCount !== newCount) {
+            if(animationsSuspended()) {
+                updateText();
+            } else if(hasCount !== newCount) {
                 // animate tokens moving
                 // slight delay so that the player inventory will be correct size
                 runDelayed(() => animateMoveToken(newCount - hasCount, color, parentSelector, "#board .board-tokens", updateText));
@@ -117,11 +133,16 @@ const updateTierRow = (selector, devCardsDeck, orientCardsDeck) => {
         const imgUrl = `/images/development-cards/${cardId}.jpg`;
         const imgElm = freeCardElm.querySelector("img");
         imgElm.src = imgUrl;
-        imgElm.classList.add("invisible");
 
         // add additional info
         freeCardElm.setAttribute("card-id", cardId);
         freeCardElm.setAttribute("cost", JSON.stringify(cost));
+
+        if(animationsSuspended()) {
+            imgElm.classList.remove("invisible");
+            return;
+        }
+        imgElm.classList.add("invisible");
 
         // slight timeout to ensure no content shift
         // only delay if deck is not invisible
@@ -209,7 +230,7 @@ export const updateCards = (cards, baseElement, containerSelector, cardSelector,
         // else don't animate or make invisible
         const boardCardSel = document.querySelector(`.board-container *[card-id="${cid}"]`)
                              || document.querySelector(`.board *[card-id="${cid}"]`); // for regular base + orient board
-        if(boardCardSel) {
+        if(boardCardSel && !animationsSuspended()) {
             imgElm.classList.add("invisible");
 
             // slight delay so that the player inventory will be correct size
@@ -483,6 +504,8 @@ const showPollErrorOnce = (message) => {
 const lobbySessionPoll = createLongPoll({
     name: "board-lobby-session",
     indicator: false,
+    // badges and aliases can wait until the tab is visible again
+    pauseWhenHidden: true,
     url: (hash) => {
         const url = new URL(`${SETTINGS.getLS_API()}/api/sessions/${getSessionId()}`);
         url.search = new URLSearchParams({ hash }).toString();
