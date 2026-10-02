@@ -238,7 +238,8 @@ for (const version of VERSIONS) {
         test.skip(!stack?.baseUrl, "needs a client origin: set E2E_INSTANCE or E2E_BASE_URL");
         const seed = seedFor("rendered", version, testInfo.project.name);
         const users = await api.createUsers(2, "E2E Board");
-        const sessionId = await api.createGame({ users, version });
+        // dealt from the seed on the fake stack, so a rerun replays the game
+        const sessionId = await api.createGame({ users, version, dealSeed: seed });
         const names = SEAT_DEVICES[browserName] ?? SEAT_DEVICES.chromium;
         const seats = [
             await openSeat(browser, "desktop", names.desktop, users[0], sessionId, version),

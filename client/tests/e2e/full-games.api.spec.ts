@@ -14,18 +14,27 @@ import { playGame } from "./lib/bot.mjs";
 // endpoint answers 200 [] for every player (never a 500), and the Lobby
 // Service has deleted the session (GET answers 400 or 404).
 //
-// Each test leaves a game.json in its output folder and a "game" annotation
-// with the seed, rounds, turns, actions, winners and time taken.
+// Each test leaves a game.json in its output folder (seed, deal, rounds,
+// turns, actions, winners, prestige, time) and a "game" annotation with most
+// of the same.
 //
 // Run: E2E_INSTANCE=<name> pnpm run test:e2e:api   (see docs/testing.md)
 
 test.describe.configure({ mode: "parallel" });
 
+const DEAL_DECKS = ["tier1Deck", "tier2Deck", "tier3Deck", "tier1OrientDeck", "tier2OrientDeck", "tier3OrientDeck", "nobleDeck", "citiesDeck"];
+/** The ids of the cards face up at the start, per deck. */
+const dealOf = (state: any) => Object.fromEntries(DEAL_DECKS.map((d) => [d, (state[d]?.visibleCards ?? []).map((c: any) => c.id)]));
+
 for (const version of VERSIONS) {
     for (const players of PLAYER_COUNTS) {
         for (let run = 1; run <= SEEDS_PER_GAME; run++) {
             test(`${version}, ${players} players, game ${run}: a whole game ends by the rules`, async ({ api }, testInfo) => {
-                // Game 1 keeps the seed earlier runs used, so its moves stay comparable.
+                // Game 1 keeps the seed it had when there was one game per version
+                // and player count. The seed fixes the bot's choices for a given
+                // state, and on the fake stack the deal too, so there a rerun with
+                // the same E2E_SEED replays every game. The real GS deals at random
+                // unless it runs with gs.shuffleSeed; the deal is in game.json.
                 const seed = run === 1 ? seedFor(version, players) : seedFor(version, players, run);
                 const log: string[] = [];
                 const started = Date.now();
@@ -39,6 +48,8 @@ for (const version of VERSIONS) {
                 const ms = Date.now() - started;
                 const summary = {
                     version, players, seed, sessionId: result.sessionId,
+                    // the visible cards dealt at the start: two runs with the same deal show the same ids
+                    deal: dealOf(result.initial),
                     rounds: result.rounds, turns: result.turns, actions: result.steps,
                     winners: result.winners, ms,
                     prestige: Object.fromEntries(result.state.players.map((p: any) => [p.name, p.prestigePoints])),

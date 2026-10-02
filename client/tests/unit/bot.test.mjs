@@ -34,14 +34,24 @@ const assertLegalTake = (state, me, body) => {
 };
 
 test("the opening move takes legal gems and never Gold", () => {
+    let takes = 0;
     for (const seed of SEEDS) {
         const state = game();
         const move = nextAction(state, "alice", { seed });
+        // The bot now and then (5%) reserves for the gold instead; that is a
+        // legal opening too, so only check it is a plain reserve from the board.
+        if (move.action === "RESERVE_CARD") {
+            assert.ok(state.tier1Deck.visibleCards.concat(state.tier2Deck.visibleCards, state.tier3Deck.visibleCards)
+                .some((c) => c.id === move.body.cardId), move.reason);
+            continue;
+        }
         assert.equal(move.action, "TAKE_TOKEN", move.reason);
+        takes++;
         assertLegalTake(state, state.players[0], move.body);
         assert.equal(total(move.body.putBackTokens), 0);
         assert.ok(total(move.body.takeTokens) >= 2);
     }
+    assert.ok(takes >= SEEDS.length - 2, `only ${takes} of ${SEEDS.length} openings took gems`);
 });
 
 test("tokens above 10 go back, down to exactly 10, from tokens held before the take", () => {

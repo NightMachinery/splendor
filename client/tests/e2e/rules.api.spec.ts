@@ -108,8 +108,8 @@ test("illegal token takes, purchases and out-of-turn moves are refused", async (
 test("a fourth reserved card is refused", async ({ api }) => {
     const users = await api.createUsers(2, "E2E Reserve");
     const [alice] = users;
-    const id = await api.createGame({ users, version: "BASE_ORIENT" });
     const seed = seedFor("reserve");
+    const id = await api.createGame({ users, version: "BASE_ORIENT", dealSeed: seed });
     for (let i = 0; i < 3; i++) {
         const state = await api.getState(id);
         const res = await api.putAction(alice, id, "RESERVE_CARD", { cardId: state.tier3Deck.visibleCards[0].id });

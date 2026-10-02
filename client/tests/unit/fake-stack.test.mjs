@@ -72,3 +72,38 @@ test("long-polls hold an unchanged hash, then answer 204, and answer at once on 
 
     assert.equal((await api.getStateText("123")).status, 400);
 });
+
+/** A game's moves with the per-run usernames replaced by seat numbers. */
+const bySeat = (result) => {
+    const seat = new Map(result.users.map((u, i) => [u.username, `seat ${i}`]));
+    return result.moves.map((m) => ({ ...m, player: seat.get(m.player) }));
+};
+
+test("a seeded game is dealt and played the same way in every run, whatever ran before it", async () => {
+    // Two separate stacks, as two runs would start, with other sessions created
+    // before the seeded game in one of them (parallel workers do that).
+    const other = await startFakeStack({ seed: 77, holdMs: 300 });
+    try {
+        const api2 = new SplendorApi({ lsUrl: other.lsUrl, gsUrl: other.gsUrl });
+        for (let i = 0; i < 3; i++) await api2.createGame({ users: await api2.createUsers(2, `Noise ${i}`), version: "BASE_ORIENT" });
+        const a = await playGame({ api, players: 3, version: "BASE_ORIENT_TRADE_ROUTES", seed: 31 });
+        const b = await playGame({ api: api2, players: 3, version: "BASE_ORIENT_TRADE_ROUTES", seed: 31 });
+        assert.notEqual(a.users[0].username, b.users[0].username, "fresh users in each run");
+        const deal = (r) => JSON.stringify(r.initial, (k, v) => (k === "name" || k === "colour" ? undefined : v));
+        assert.equal(deal(a), deal(b), "the same deal");
+        assert.deepEqual(bySeat(a), bySeat(b), "the same moves");
+        assert.equal(a.turns, b.turns);
+
+        // without a deal seed the stack's own seed and the session number decide
+        const [x, y] = await api.createUsers(2, "Unseeded");
+        const unseeded = await api.getState(await api.createGame({ users: [x, y], version: "BASE_ORIENT_TRADE_ROUTES" }));
+        assert.notEqual(deal({ initial: unseeded }), deal(a));
+        assert.equal((await api.request("POST", `${api.lsUrl}/api/sessions`, {
+            query: { access_token: x.token },
+            json: { creator: x.username, game: "splendor_BASE_ORIENT", savegame: "" },
+            headers: { "x-e2e-deal-seed": "abc" },
+        })).status, 400, "a deal seed that is not a whole number is refused");
+    } finally {
+        await other.close();
+    }
+});

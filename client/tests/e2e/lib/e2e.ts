@@ -9,7 +9,8 @@ import { GAME_VERSIONS } from "./rules.mjs";
  * The target stack comes from E2E_INSTANCE or E2E_BASE_URL / E2E_LS_URL /
  * E2E_GS_URL (see stack.mjs); without one every full-stack test skips.
  * Knobs, all optional:
- *   E2E_SEED       bot seed (default 1); each game derives its own from it
+ *   E2E_SEED       seed (default 1); each game derives its own from it, which
+ *                  fixes the bot's choices and, on the fake stack only, the deal
  *   E2E_SEEDS      whole API games per version and player count (default 2),
  *                  each with its own seed
  *   E2E_VERSIONS   comma-separated game versions (default: all four)
@@ -61,7 +62,11 @@ export async function attachGameFailure(testInfo: TestInfo, err: any, log: strin
     if (err?.before) await testInfo.attach("state-before.json", { body: JSON.stringify(err.before, null, 2), contentType: "application/json" });
 }
 
-/** A per-game seed, so different games in one run differ but a run is reproducible. */
+/**
+ * A per-game seed, so different games in one run differ. It is the same in
+ * every run with the same E2E_SEED; whether the game is too depends on the
+ * deal (reproducible on the fake stack only, see docs/testing.md).
+ */
 export const seedFor = (...parts: Array<string | number>) => {
     let h = SEED >>> 0;
     for (const ch of parts.join("|")) h = (Math.imul(h ^ ch.charCodeAt(0), 16777619)) >>> 0;

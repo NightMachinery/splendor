@@ -198,7 +198,8 @@ Specs:
   every player must be refused with 400, the actions endpoint must answer
   200 `[]` for every player (never 500), the state must not have changed,
   and the LS must have deleted the session. Each test attaches a
-  `game.json` (seed, rounds, turns, actions, winners, prestige, time).
+  `game.json` (seed, the cards dealt face up, rounds, turns, actions,
+  winners, prestige, time).
 - `rules.api.spec.ts`: illegal moves must answer 400 (401 for another
   player's token) and leave the state byte for byte unchanged: gold taken like
   a gem, negative amounts, three of one colour, two plus one, four colours, a
@@ -342,6 +343,13 @@ actions with the same 400 and 401 answers, the session removed at game over).
 The rules come from `tests/fixtures/engine.mjs`, an offline copy of the
 server's rules.
 
+Deals are reproducible. A session created with the header
+`X-E2E-Deal-Seed: N` (which `SplendorApi.createGame` sends when given a
+`dealSeed`, and `playGame` and the rendered games always give it) is dealt
+from N alone. Any other session is dealt from the stack's `--seed` and the
+order in which sessions were created, which depends on how parallel workers
+were scheduled. The real LS ignores the header.
+
 What a fake-stack run proves: the client, the bot, the rule checks and the
 specs agree with each other, and the client renders whole games correctly.
 What it does not prove: that the real server follows the rules. The engine is
@@ -367,9 +375,21 @@ Stack selection:
 
 Full-stack knobs:
 
-- `E2E_SEED` (default 1): every game derives its own seed from it, so a run
-  is reproducible and different games still differ. The seed of each game is
-  in its `game` annotation.
+- `E2E_SEED` (default 1): every game derives its own seed from it, so
+  different games differ. The seed of each game is in its `game`
+  annotation. What it fixes depends on the stack:
+  - the bot's choice for a given state, everywhere. Player names do not
+    count, only seats, so fresh users in a rerun do not change the moves;
+  - on the fake stack, also the deal: `createGame` sends the seed as the
+    `X-E2E-Deal-Seed` header and the fake LS deals that game from it. A
+    rerun with the same `E2E_SEED` replays every game move for move,
+    whatever else runs in parallel;
+  - on a real stack, not the deal. The GS shuffles at random unless it was
+    started with `gs.shuffleSeed` (every game then gets the same deal for a
+    version and player count), and `self_host.py instance-start` does not
+    set it. So a rerun there plays different games. To compare runs, look
+    at the `deal` in each `game.json`; to debug a failed game, use the
+    `state.json`, `state-before.json` and `moves.log` it attaches.
 - `E2E_VERSIONS` (default all four): comma-separated, from `BASE_ORIENT`,
   `BASE_ORIENT_CITIES`, `BASE_ORIENT_CITIES_NOBLES`,
   `BASE_ORIENT_TRADE_ROUTES`.

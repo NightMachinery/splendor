@@ -22,6 +22,12 @@
  *           prints {"lsUrl": ..., "gsUrl": ..., "baseUrl": ...} and serves until SIGTERM/SIGINT.
  *
  * Playwright starts it for you with E2E_FAKE_STACK=1 (pnpm run test:e2e:fake).
+ *
+ * Deals: a session created with the header `X-E2E-Deal-Seed: N` (what
+ * SplendorApi.createGame sends for a `dealSeed`) is dealt from N alone, so a
+ * seeded test game gets the same deal in every run, whatever else runs in
+ * parallel. Any other session is dealt from `seed` and its own number (the
+ * order in which sessions were created).
  */
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
@@ -42,7 +48,7 @@ const VERSIONS = ["BASE_ORIENT", "BASE_ORIENT_CITIES", "BASE_ORIENT_CITIES_NOBLE
  * @property {number} [webPort]     serve `distDir` here too (needs distDir)
  * @property {string} [distDir]     a built client (astro build output)
  * @property {string} [host]        default 127.0.0.1
- * @property {number} [seed]        deck shuffles derive from it and the session number
+ * @property {number} [seed]        deals of sessions without X-E2E-Deal-Seed derive from it and the session number
  * @property {number} [holdMs]      how long a long-poll with an unchanged hash is held before 204 (default 5000)
  * @property {(line: string) => void} [log]
  */
@@ -159,11 +165,18 @@ export async function startFakeStack(opts = {}) {
         if (method === "POST" && path === "/api/sessions") {
             const body = parse(await readBody(req));
             if (!me) return send(res, 401, "Invalid token.");
+            const dealHeader = req.headers["x-e2e-deal-seed"];
+            const dealSeed = dealHeader === undefined ? undefined : Number(dealHeader);
+            if (dealSeed !== undefined && !Number.isSafeInteger(dealSeed)) return send(res, 400, `X-E2E-Deal-Seed must be a whole number, got ${dealHeader}.`);
             if (!body || body.creator !== me.username) return send(res, 400, "Creator must be the token's owner.");
             if (!VERSIONS.includes(String(body.game).replace(/^splendor_/, ""))) return send(res, 400, `Unknown game service ${body.game}.`);
             // 63-bit ids, too big for a JS number, like the real LS
             const id = (4611686018427387000n + BigInt(++sessionCount)).toString();
-            sessions.set(id, { creator: me.username, game: body.game, savegame: body.savegame ?? "", players: [me.username], displayNames: { [me.username]: me.displayName }, launched: false });
+            sessions.set(id, {
+                creator: me.username, game: body.game, savegame: body.savegame ?? "", players: [me.username],
+                displayNames: { [me.username]: me.displayName }, launched: false,
+                dealSeed: dealSeed ?? seed * 1000 + sessionCount,
+            });
             return send(res, 200, id);
         }
         if ((m = path.match(/^\/api\/sessions\/([^/]+)$/))) {
@@ -183,8 +196,8 @@ export async function startFakeStack(opts = {}) {
                 s.launched = true;
                 const version = s.game.replace(/^splendor_/, "");
                 const colours = s.players.map((/** @type {string} */ p) => [...users.values()].find((u) => u.username === p)?.preferredColour ?? "1E90FF");
-                games.set(id, new Engine({ version, players: s.players, seed: seed * 1000 + sessionCount, colours }));
-                log(`launched ${id}: ${version}, ${s.players.join(", ")}`);
+                games.set(id, new Engine({ version, players: s.players, seed: s.dealSeed, colours }));
+                log(`launched ${id}: ${version}, ${s.players.join(", ")}, deal seed ${s.dealSeed}`);
                 return send(res, 200, "");
             }
             if (method === "DELETE") {

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { SplendorApi, ApiError, randomToken } from "../e2e/lib/splendor-api.mjs";
 
-/** @type {Array<{ method: string, path: string, query: Record<string, string>, body: any }>} */
+/** @type {Array<{ method: string, path: string, query: Record<string, string>, headers: Record<string, any>, body: any }>} */
 const seen = [];
 const SESSION = "4611686018427387903"; // above Number.MAX_SAFE_INTEGER, as LS ids can be
 let launched = false;
@@ -19,7 +19,7 @@ before(async () => {
         let raw = "";
         for await (const chunk of req) raw += chunk;
         const body = raw ? JSON.parse(raw) : null;
-        seen.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body });
+        seen.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: req.headers, body });
         const send = (status, text, type = "application/json") => { res.writeHead(status, { "content-type": type }); res.end(text); };
         const p = url.pathname;
         if (p === "/ls/api/local-auth") {
@@ -60,11 +60,24 @@ test("createGame creates, joins and launches through the LS, then waits for the 
     const create = seen.find((r) => r.method === "POST" && r.path === "/ls/api/sessions");
     assert.deepEqual(create.body, { creator: alice.username, game: "splendor_BASE_ORIENT_CITIES_NOBLES", savegame: "" });
     assert.equal(create.query.access_token, alice.token);
+    assert.equal(create.headers["x-e2e-deal-seed"], undefined, "no deal seed unless one is given");
     const join = seen.find((r) => r.method === "PUT" && r.path === `/ls/api/sessions/${SESSION}/players/${bob.username}`);
     assert.equal(join.query.access_token, bob.token);
     const launch = seen.find((r) => r.method === "POST" && r.path === `/ls/api/sessions/${SESSION}`);
     assert.equal(launch.query.access_token, alice.token);
     assert.deepEqual(await a.getState(id), { turnCounter: 0, players: [] });
+});
+
+test("a deal seed goes to the LS as the X-E2E-Deal-Seed header, which only the fake stack reads", async () => {
+    const a = api();
+    const [alice, bob] = await a.createUsers(2, "Unit Seeded");
+    const from = seen.length;
+    await a.createGame({ users: [alice, bob], version: "BASE_ORIENT", dealSeed: 4242 });
+    const create = seen.slice(from).find((r) => r.method === "POST" && r.path === "/ls/api/sessions");
+    assert.equal(create.headers["x-e2e-deal-seed"], "4242");
+    assert.equal(create.headers["content-type"], "application/json; charset=utf-8", "the JSON body keeps its content type");
+    assert.deepEqual(create.body, { creator: alice.username, game: "splendor_BASE_ORIENT", savegame: "" }, "the body is unchanged");
+    await assert.rejects(a.createSession(alice, "BASE_ORIENT", "", { dealSeed: 1.5 }), /whole number/);
 });
 
 test("putAction reports a rejection instead of throwing, and sends the body as JSON", async () => {

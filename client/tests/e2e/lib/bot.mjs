@@ -9,7 +9,9 @@
  *   playGame({ api, players, version, seed, maxTurns, onStep, actor })
  *
  * nextAction is a pure function of the Game Service state and the seed: the
- * same state and seed always give the same move. It only proposes moves that
+ * same state and seed always give the same move. Player names do not count,
+ * only seats, so a rerun with fresh users (the names carry a per-run suffix)
+ * plays the same moves from the same deal. It only proposes moves that
  * are legal under the official rules (see rules.mjs), and never relies on
  * server leniency: no Gold in TAKE_TOKEN, no negative amounts, no
  * overpayment, cascades only into the right tier, 2 of a colour only from a
@@ -72,11 +74,15 @@ export const mulberry32 = (seed) => {
     };
 };
 
-/** A short fingerprint of the parts of the state a decision depends on. @param {any} state @param {string} name */
+/**
+ * A short fingerprint of the parts of the state a decision depends on. The
+ * player is identified by seat, not name: usernames differ from run to run.
+ * @param {any} state @param {string} name
+ */
 const fingerprint = (state, name) => {
     const me = findPlayer(state, name) || {};
     return [
-        name, state.turnCounter, (state.curValidActions || []).join("+"),
+        (state.players || []).indexOf(me), state.turnCounter, (state.curValidActions || []).join("+"),
         GEMS.map((g) => amount(state.tokens, g)).join("."), amount(state.tokens, "Gold"),
         (me.devCards || []).length, (me.reservedCards || []).length, total(me.tokens),
         boardDevCards(state).map(({ card }) => card.id).join("."),
@@ -491,7 +497,8 @@ const isPass = (move) => move.action === "TAKE_TOKEN" && total(/** @type {any} *
  * Play one game to the end through the REST APIs.
  *
  * Creates `players` users (or uses the given ones), creates a session of
- * `version`, joins and launches it, then plays every seat with nextAction
+ * `version` (dealt from `seed` on the fake stack, see createGame's
+ * dealSeed), joins and launches it, then plays every seat with nextAction
  * until the Game Service reports game over. After every action it re-reads
  * the state and checks the invariants of rules.stateViolations; after every
  * round it checks that the game ended if someone had reached the goal; at
@@ -528,7 +535,7 @@ export async function playGame(opts) {
     const users = Array.isArray(opts.players)
         ? opts.players
         : await api.createUsers(opts.players ?? 2, `${namePrefix} ${seed}`);
-    const sessionId = opts.sessionId ?? await api.createGame({ users, version });
+    const sessionId = opts.sessionId ?? await api.createGame({ users, version, dealSeed: seed });
     const byName = new Map(users.map((u) => [u.username, u]));
     /** @type {Array<{ step: number, turn: number, player: string, action: string, body: unknown, reason: string }>} */
     const moves = [];
@@ -538,6 +545,7 @@ export async function playGame(opts) {
         });
 
     let state = await api.getState(sessionId);
+    const initial = state;
     const setupErrors = initialStateViolations(state, { version, players: users.length });
     if (setupErrors.length) throw fail(`bad initial state:\n  ${setupErrors.join("\n  ")}`, state);
 
@@ -607,7 +615,7 @@ export async function playGame(opts) {
     if (finalErrors.length) throw fail(`bad final state:\n  ${finalErrors.join("\n  ")}`, state);
 
     return {
-        sessionId, users, version, seed, state, moves, turnsTaken,
+        sessionId, users, version, seed, initial, state, moves, turnsTaken,
         turns: turn, steps: step, rounds: counts[0],
         winners: state.winners.map((/** @type {any} */ w) => w.name),
     };

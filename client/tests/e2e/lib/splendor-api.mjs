@@ -21,6 +21,12 @@
  *   GS PUT  /api/sessions/{id}/players/{user}/actions/{ACTION}?access_token= {json body}
  *   GS GET  /api/sessions/{id}/players/{user}/actions         action names (current player)
  *   both GET /api/online
+ *
+ * One addition only the fake stack (tests/fixtures/fake-stack.mjs) reads:
+ * createSession sends `X-E2E-Deal-Seed: N` when given a deal seed, and the
+ * fake LS then deals that game from N, so a seeded test game is dealt the
+ * same way in every run. The real LS ignores the header, and the real GS
+ * deals at random unless it runs with gs.shuffleSeed.
  */
 
 import { serviceName } from "./rules.mjs";
@@ -76,17 +82,20 @@ export class SplendorApi {
      * One request. Returns { status, ok, text }; never throws on an HTTP
      * error status (callers decide), only on network failure or timeout.
      * @param {string} method @param {string} url
-     * @param {{ json?: unknown, query?: Record<string, string>, timeoutMs?: number }} [opts]
+     * @param {{ json?: unknown, query?: Record<string, string>, headers?: Record<string, string>, timeoutMs?: number }} [opts]
      */
     async request(method, url, opts = {}) {
         const u = new URL(url);
         for (const [k, v] of Object.entries(opts.query || {})) u.searchParams.set(k, v);
+        /** @type {Record<string, string>} */
+        const headers = { ...opts.headers };
         /** @type {RequestInit} */
         const init = { method, signal: AbortSignal.timeout(opts.timeoutMs ?? this.timeoutMs) };
         if (opts.json !== undefined) {
-            init.headers = { "content-type": "application/json; charset=utf-8" };
+            headers["content-type"] = "application/json; charset=utf-8";
             init.body = JSON.stringify(opts.json);
         }
+        if (Object.keys(headers).length) init.headers = headers;
         let resp;
         try {
             resp = await this.fetch(u, init);
@@ -100,7 +109,7 @@ export class SplendorApi {
     /**
      * Like request, but throws ApiError unless the status is 2xx.
      * @param {string} method @param {string} url
-     * @param {{ json?: unknown, query?: Record<string, string>, timeoutMs?: number }} [opts]
+     * @param {{ json?: unknown, query?: Record<string, string>, headers?: Record<string, string>, timeoutMs?: number }} [opts]
      */
     async expectOk(method, url, opts = {}) {
         const res = await this.request(method, url, opts);
@@ -175,13 +184,18 @@ export class SplendorApi {
 
     /**
      * Create a session; returns its id as a string (ids are 63-bit numbers,
-     * too big for a JS number).
+     * too big for a JS number). `dealSeed` only reaches the fake stack, see
+     * the top of this file.
      * @param {User} creator @param {string} version e.g. "BASE_ORIENT" @param {string} [savegame]
+     * @param {{ dealSeed?: number }} [opts]
      */
-    async createSession(creator, version, savegame = "") {
+    async createSession(creator, version, savegame = "", opts = {}) {
+        const dealSeed = opts.dealSeed;
+        if (dealSeed !== undefined && !Number.isSafeInteger(dealSeed)) throw new Error(`dealSeed must be a whole number, got ${dealSeed}`);
         const res = await this.expectOk("POST", `${this.lsUrl}/api/sessions`, {
             query: { access_token: creator.token },
             json: { creator: creator.username, game: serviceName(version), savegame },
+            headers: dealSeed === undefined ? undefined : { "x-e2e-deal-seed": String(dealSeed) },
         });
         const id = res.text.trim().replace(/^"|"$/g, "");
         if (!/^\d+$/.test(id)) throw new ApiError(`create session gave an unexpected reply: ${res.text.slice(0, 200)}`);
@@ -222,13 +236,13 @@ export class SplendorApi {
     /**
      * Create, join and launch a game for `users` (the first one creates it
      * and moves first), then wait until the GS serves its state.
-     * @param {{ users: User[], version: string, savegame?: string, timeoutMs?: number }} opts
+     * @param {{ users: User[], version: string, savegame?: string, dealSeed?: number, timeoutMs?: number }} opts
      * @returns {Promise<string>} session id
      */
-    async createGame({ users, version, savegame = "", timeoutMs = 30_000 }) {
+    async createGame({ users, version, savegame = "", dealSeed, timeoutMs = 30_000 }) {
         if (users.length < 2 || users.length > 4) throw new Error(`Splendor needs 2 to 4 players, got ${users.length}`);
         const [creator, ...others] = users;
-        const sessionId = await this.createSession(creator, version, savegame);
+        const sessionId = await this.createSession(creator, version, savegame, { dealSeed });
         for (const u of others) await this.joinSession(u, sessionId);
         await this.launchSession(creator, sessionId);
         await this.waitForState(sessionId, { timeoutMs });
