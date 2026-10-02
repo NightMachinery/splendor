@@ -14,26 +14,28 @@ public class TradingPostsPlayer extends OrientPlayer {
     public static final int COATS_OF_ARMS = 5;
 
     private int coatsOfArmsUnplaced;
+
+    // the powers are not final: Gson sets them when it loads a save, and JDK 26 and later refuse to set final fields that way
     /**
      * The power which take extra token after purchase.
      */
-    public final ExtraTokenAfterPurchasePower extraTokenAfterPurchase;
+    public ExtraTokenAfterPurchasePower extraTokenAfterPurchase;
     /**
      * The power which take extra token after taking same color token.
      */
-    public final ExtraTokenAfterTakingSameColorTokensPower extraTokenAfterTakingSameColor;
+    public ExtraTokenAfterTakingSameColorTokensPower extraTokenAfterTakingSameColor;
     /**
      * The power of using one gold token as two for same color purchase.
      */
-    public final GoldTokenWorthTwoTokensPower goldTokenWorthTwoTokens;
+    public GoldTokenWorthTwoTokensPower goldTokenWorthTwoTokens;
     /**
      * The power which add five prestige points.
      */
-    public final AddFivePrestigePointsPower addFivePrestigePoints;
+    public AddFivePrestigePointsPower addFivePrestigePoints;
     /**
      * The power which add prestige points based on coats of arms.
      */
-    public final AddPrestigePointsWithCoatsOfArmsPower addPrestigePointsWithCoatsOfArms;
+    public AddPrestigePointsWithCoatsOfArmsPower addPrestigePointsWithCoatsOfArms;
 
     /**
      * Creates a Player object with a given name and colour.

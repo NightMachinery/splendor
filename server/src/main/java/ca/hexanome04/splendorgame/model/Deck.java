@@ -14,9 +14,10 @@ import java.util.Stack;
  */
 public class Deck<T extends Card> {
 
+    // not final: Gson sets these fields when it loads a save, and JDK 26 and later refuse to set final fields that way
     @HideFromClient
-    private final Stack<T> cards;
-    private final List<T> visibleCards;
+    private Stack<T> cards;
+    private List<T> visibleCards;
     /**
      * This field will not work properly with a deck that contains Noble cards.
      */

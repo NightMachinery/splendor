@@ -318,3 +318,13 @@ mvn -q -f server/pom.xml -Dtest=FullGameSimulationTests -Dsim.seeds=60 test
 The soak run plays 720 games and takes about ten times as long as the default
 run. A failure names the version,
 the player count and the seed, and the same seed replays the same game.
+
+Loading a save makes Gson set every field of the game reflectively. JDK 26
+warns when such a field is final, and a later JDK will refuse, which would
+break every load. So no field of a saved class may be final:
+
+- On JDK 26 and later, the Maven profile `deny-final-field-mutation` switches
+  itself on and runs the tests with `--illegal-final-field-mutation=deny`. A
+  final field then fails the save and load tests at once.
+- `SavedStateFieldsTest` walks the saved classes and fails on a final field,
+  so older JDKs (CI runs JDK 17) catch it too.

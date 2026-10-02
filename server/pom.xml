@@ -19,6 +19,12 @@
         <build.name>splendorGame</build.name>
 
         <springboot.version>2.7.5</springboot.version>
+
+        <!-- the dev profile's values, repeated here: activating any other profile (such as the JDK 26
+             one below) switches off an activeByDefault profile -->
+        <spring.profiles.active>dev</spring.profiles.active>
+        <packaging.type>jar</packaging.type>
+        <surefire.extraArgLine></surefire.extraArgLine>
     </properties>
 
     <!-- Main Developers -->
@@ -164,7 +170,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.2</version>
                 <configuration>
-                    <argLine>-Dspring.profiles.active=${spring.profiles.active}</argLine>
+                    <argLine>-Dspring.profiles.active=${spring.profiles.active} ${surefire.extraArgLine}</argLine>
                 </configuration>
             </plugin>
             <!-- PMD static code analysis -->
@@ -249,6 +255,18 @@
             <properties>
                 <spring.profiles.active>prod</spring.profiles.active>
                 <packaging.type>jar</packaging.type>
+            </properties>
+        </profile>
+
+        <!-- JDK 26 and later warn when Gson sets a final field while loading a save, and a later JDK will
+             refuse. Make the tests refuse it now, so a new final field in a saved class fails here first. -->
+        <profile>
+            <id>deny-final-field-mutation</id>
+            <activation>
+                <jdk>[26,)</jdk>
+            </activation>
+            <properties>
+                <surefire.extraArgLine>--illegal-final-field-mutation=deny</surefire.extraArgLine>
             </properties>
         </profile>
     </profiles>

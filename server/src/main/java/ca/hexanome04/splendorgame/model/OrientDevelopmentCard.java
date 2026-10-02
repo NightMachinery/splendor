@@ -7,8 +7,9 @@ import java.util.HashMap;
  */
 public class OrientDevelopmentCard extends DevelopmentCard {
 
-    private final boolean reserveNoble;
-    private final boolean isSatchel;
+    // not final: Gson sets these fields when it loads a save, and JDK 26 and later refuse to set final fields that way
+    private boolean reserveNoble;
+    private boolean isSatchel;
     private CascadeType cascadeType;
 
     /**

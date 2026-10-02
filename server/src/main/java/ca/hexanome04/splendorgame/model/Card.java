@@ -10,10 +10,11 @@ import java.util.Map;
  */
 public abstract class Card {
 
-    private final String id;
-    private final int prestigePoints;
-    private final CostType costType;
-    private final HashMap<TokenType, Integer> tokenCost;
+    // not final: Gson sets these fields when it loads a save, and JDK 26 and later refuse to set final fields that way
+    private String id;
+    private int prestigePoints;
+    private CostType costType;
+    private HashMap<TokenType, Integer> tokenCost;
 
     // maybe attribute for the actual image of the card to be added?
     // add an attribute for a list of tokens representing the token/bonus cost for this card

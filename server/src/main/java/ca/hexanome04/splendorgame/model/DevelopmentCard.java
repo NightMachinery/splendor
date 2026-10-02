@@ -7,9 +7,10 @@ import java.util.HashMap;
  */
 public abstract class DevelopmentCard extends Card {
 
+    // not final: Gson sets these fields when it loads a save, and JDK 26 and later refuse to set final fields that way
     private TokenType tokenType;
-    private final int bonus;
-    private final CardTier cardTier;
+    private int bonus;
+    private CardTier cardTier;
 
     /**
      * Creates a development card from the class in which this was called super from.

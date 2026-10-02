@@ -40,8 +40,9 @@ public class OrientGame implements Game {
 
     static final Logger logger = LoggerFactory.getLogger(OrientGame.class);
 
-    private final GameVersions gameVersion;
-    private final int prestigePointsToWin;
+    // not final: Gson sets these fields when it loads a save, and JDK 26 and later refuse to set final fields that way
+    private GameVersions gameVersion;
+    private int prestigePointsToWin;
     private int turnCounter;
 
     private List<Actions> curValidActions = new ArrayList<>();
@@ -49,14 +50,14 @@ public class OrientGame implements Game {
     private List<Player> players = new ArrayList<>();
 
     /** Board decks. */
-    private final Deck<RegDevelopmentCard> tier1Deck = new Deck<>();
-    private final Deck<RegDevelopmentCard> tier2Deck = new Deck<>();
-    private final Deck<RegDevelopmentCard> tier3Deck = new Deck<>();
+    private Deck<RegDevelopmentCard> tier1Deck = new Deck<>();
+    private Deck<RegDevelopmentCard> tier2Deck = new Deck<>();
+    private Deck<RegDevelopmentCard> tier3Deck = new Deck<>();
     private Deck<OrientDevelopmentCard> tier1OrientDeck;
     private Deck<OrientDevelopmentCard> tier2OrientDeck;
     private Deck<OrientDevelopmentCard> tier3OrientDeck;
     private Deck<NobleCard> nobleDeck;
-    private final HashMap<TokenType, Integer> tokens = new HashMap<>();
+    private HashMap<TokenType, Integer> tokens = new HashMap<>();
 
     /** End of game info. */
     private List<Player> playersWhoCanWin = new ArrayList<>();
