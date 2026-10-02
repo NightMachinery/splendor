@@ -137,3 +137,7 @@ saves/
 savesTest/
 .self-host/
 __pycache__/
+
+# Claude Code runtime files (never commit)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
