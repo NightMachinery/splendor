@@ -12,3 +12,4 @@
 - Skip running `npx @sveltejs/mcp svelte-autofixer`; this repo is Astro/React/vanilla JS and that tool is unreliable.
 - If there is too little free disk space to continue, stop and ask the user to handle it manually.
 - If the Git worktree is dirty before mutating changes, preserve unrelated user changes and commit your own work atomically at natural endpoints.
+- For screenshots, mobile/responsive checks and layout probes of the client as any player, use the `splendor-browser` skill (`.claude/skills/splendor-browser/SKILL.md`, linked for Codex at `.agents/skills/splendor-browser`). It runs a private headless Chrome against an isolated instance.
