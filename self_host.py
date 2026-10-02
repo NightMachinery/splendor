@@ -688,6 +688,8 @@ def build_client_staging():
 def swap_dist(staging):
     """Replace client/dist with a finished build by two renames, so it is never half-written."""
     old = DATA / "build" / f"dist-old-{os.getpid()}"
+    # Builds no longer stage in DATA/build, so nothing else may have created it yet.
+    old.parent.mkdir(parents=True, exist_ok=True)
     if old.exists():
         shutil.rmtree(old)
     if DIST.exists():
