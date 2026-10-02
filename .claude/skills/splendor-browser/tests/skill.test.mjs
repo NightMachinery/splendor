@@ -1,9 +1,9 @@
 // @ts-check
 /**
  * Self-tests for the splendor-browser scripts. No game stack is needed: the
- * browser tests serve their own tiny pages from a loopback HTTP server.
+ * browser tests bring their own pages.
  *
- *   node --test .claude/skills/splendor-browser/tests/
+ *   node --test .claude/skills/splendor-browser/tests/*.test.mjs
  *
  * Tests that launch Chrome are skipped when it is not installed. Every
  * launched Chrome uses a profile root inside a temporary directory, and each
@@ -11,12 +11,18 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DEFAULT_CHROME, getBrowser, parseViewport } from "../scripts/browser.mjs";
 import { pageProbe, probeExpression } from "../scripts/inpage.mjs";
-import { expectedNetwork, identityProblem } from "../scripts/capture.mjs";
+import { expectedNetwork, identityProblem, numberOption } from "../scripts/capture.mjs";
+
+const SCRIPTS = fileURLToPath(new URL("../scripts/", import.meta.url));
+/** Run one of the scripts and return { status, stdout, stderr }. @param {string} script @param {string[]} args */
+const runScript = (script, args) => spawnSync(process.execPath, [join(SCRIPTS, script), ...args], { encoding: "utf8", timeout: 60_000 });
 
 const HAVE_CHROME = existsSync(process.env.SPLENDOR_CHROME || DEFAULT_CHROME);
 const noChrome = HAVE_CHROME ? false : "Google Chrome is not installed";
@@ -106,4 +112,36 @@ test("identityProblem: a tab that ran as someone else is caught", () => {
     assert.equal(identityProblem(probe({ me: "cdp_spectator", spectating: true }), spectator, false), null);
     assert.equal(identityProblem(probe({ me: null }), null, false), null, "anon has no identity to check");
     assert.equal(identityProblem(probe({ me: null }), p1, true), null, "a redirect is reported as such");
+});
+
+test("numberOption: only finite numbers in range pass", () => {
+    const jobs = { fallback: 3, min: 1, int: true };
+    assert.equal(numberOption(undefined, "jobs", jobs), 3);
+    assert.equal(numberOption("4", "jobs", jobs), 4);
+    for (const bad of ["abc", "", "0", "-2", "1.5", "NaN", "Infinity", true]) {
+        assert.equal(typeof numberOption(bad, "jobs", jobs), "string", `--jobs=${String(bad)} was accepted`);
+    }
+    assert.equal(numberOption("0", "settle", { fallback: 700, min: 0 }), 0);
+    assert.equal(typeof numberOption("4.5", "dpr", { fallback: 0, min: 0.1, max: 4 }), "string");
+});
+
+test("capture: bad options are usage errors (exit 2) before any browser starts", () => {
+    const base = ["--base-url=http://127.0.0.1:9", "--as=anon", "--page=login"];
+    const cases = [
+        ["--jobs=abc", /--jobs must be a whole number/],
+        ["--jobs=0", /--jobs must be a whole number/],
+        ["--timeout=abc", /--timeout must be a number/],
+        ["--timeout", /--timeout needs a value/],
+        ["--settle=-1", /--settle must be a number/],
+        ["--dpr=abc", /--dpr must be a number/],
+        ["--vp=", /--vp lists no viewport/],
+        ["--json=yes", /--json is a flag/],
+        ["--bogus=1", /unknown option --bogus/],
+        ["stray", /unexpected argument/],
+    ];
+    for (const [arg, message] of cases) {
+        const r = runScript("probe.mjs", [...base, /** @type {string} */ (arg)]);
+        assert.equal(r.status, 2, `${arg}: exit ${r.status}, stderr ${r.stderr}`);
+        assert.match(r.stderr, /** @type {RegExp} */ (message), `${arg}: ${r.stderr}`);
+    }
 });

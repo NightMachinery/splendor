@@ -50,11 +50,33 @@ import { parseArgs, last, many, die as dieWith, stamp } from "./util.mjs";
 const LIB = new URL("../../../../client/tests/e2e/lib/", import.meta.url);
 const PAGES = { lobby: "/lobby/", home: "/", login: "/login/", settings: "/settings/" };
 const IDENTITY_KEYS = ["accessToken", "refreshToken", "username", "displayName"];
-const KNOWN = new Set([
-    "identities", "instance", "base-url", "as", "vp", "matrix", "dpr", "insets", "page", "path", "full", "modals",
-    "click", "eval", "wait-for", "timeout", "settle", "assert", "jobs", "out-dir", "label", "json", "cdp", "chrome",
-    "profile-root", "keep-profile", "headful", "allow-remote", "png", "verbose",
+/** Options that take a value (--key=value). */
+const VALUED = new Set([
+    "identities", "instance", "base-url", "as", "vp", "dpr", "page", "path", "modals", "click", "eval", "wait-for",
+    "timeout", "settle", "assert", "jobs", "out-dir", "label", "cdp", "chrome", "profile-root",
 ]);
+/** Plain flags (--flag). --insets is both: a flag, or --insets=VALUE. */
+const FLAGS = new Set(["matrix", "full", "json", "keep-profile", "headful", "allow-remote", "png", "verbose"]);
+const KNOWN = new Set([...VALUED, ...FLAGS, "insets"]);
+
+/**
+ * A numeric option: absent gives `fallback`; anything that is not a finite
+ * number at least `min` (and whole, with `int`) is a usage error.
+ * @param {unknown} raw last(args[key]) @param {string} key
+ * @param {{ fallback: number, min: number, int?: boolean, max?: number }} opts
+ * @returns {number | string} the number, or the error message
+ */
+export function numberOption(raw, key, opts) {
+    if (raw === undefined) return opts.fallback;
+    const text = typeof raw === "string" ? raw.trim() : "";
+    const n = Number(text);
+    const kind = opts.int ? "a whole number" : "a number";
+    const range = opts.max === undefined ? `>= ${opts.min}` : `from ${opts.min} to ${opts.max}`;
+    if (text === "" || !Number.isFinite(n) || (opts.int && !Number.isInteger(n)) || n < opts.min || (opts.max !== undefined && n > opts.max)) {
+        return `--${key} must be ${kind} ${range}, got ${JSON.stringify(raw === true ? "(no value)" : raw)}`;
+    }
+    return n;
+}
 
 /** Assertion names accepted by --assert. */
 export const ASSERTIONS = /** @type {const} */ ([
@@ -256,10 +278,24 @@ export function shotLine(shot) {
  * @param {string[]} argv @param {{ tool: string, screenshots: boolean, report?: (manifest: any) => void }} cfg
  */
 export async function run(argv, cfg) {
-    const die = (/** @type {string} */ msg) => dieWith(cfg.tool, msg);
-    const args = parseArgs(argv);
-    for (const k of Object.keys(args)) if (!KNOWN.has(k)) die(`unknown option --${k} (see the header of capture.mjs)`);
+    /** @type {(msg: string) => never} */
+    const die = (msg) => dieWith(cfg.tool, msg);
+    let args;
+    try { args = parseArgs(argv); } catch (err) { die(/** @type {Error} */ (err).message); }
+    for (const k of Object.keys(args)) {
+        if (!KNOWN.has(k)) die(`unknown option --${k} (see the header of capture.mjs)`);
+        for (const v of Array.isArray(args[k]) ? args[k] : [args[k]]) {
+            if (VALUED.has(k) && v === true) die(`--${k} needs a value (--${k}=...)`);
+            if (FLAGS.has(k) && v !== true) die(`--${k} is a flag and takes no value`);
+        }
+    }
     const one = (/** @type {string} */ k) => last(args[k]);
+    /** @param {string} key @param {{ fallback: number, min: number, int?: boolean, max?: number }} opts */
+    const num = (key, opts) => {
+        const v = numberOption(one(key), key, opts);
+        if (typeof v === "string") die(v);
+        return v;
+    };
     const allowRemote = !!one("allow-remote");
     const screenshots = cfg.screenshots || !!one("png");
 
@@ -307,21 +343,22 @@ export async function run(argv, cfg) {
     const url = `${origin}${path}`;
     const wantPath = new URL(url).pathname;
 
-    const dpr = one("dpr") ? Number(one("dpr")) : undefined;
+    const dpr = one("dpr") === undefined ? undefined : num("dpr", { fallback: 0, min: 0.1, max: 4 });
     /** @type {import("./browser.mjs").Viewport[]} */
     let viewports = [];
     try {
         viewports = one("matrix") ? Object.keys(VIEWPORTS).map((k) => ({ ...VIEWPORTS[k], ...(dpr ? { dpr } : {}) }))
             : parseViewportList(many(args.vp).length ? many(args.vp) : ["phone,desktop"], { dpr });
     } catch (err) { die(/** @type {Error} */ (err).message); }
+    if (!viewports.length) die("--vp lists no viewport");
 
     const modals = String(one("modals") || "keep");
     if (!["keep", "close", "both"].includes(modals)) die("--modals must be keep, close or both");
     const asserts = many(args.assert).flatMap((s) => s.split(",")).filter(Boolean);
     for (const a of asserts) if (a !== "all" && !(/** @type {readonly string[]} */ (ASSERTIONS)).includes(a)) die(`unknown --assert ${a}; use ${ASSERTIONS.join(", ")} or all`);
-    const timeoutMs = Number(one("timeout") || 30_000);
-    const settleMs = Number(one("settle") || 700);
-    const jobs = Math.max(1, Math.min(8, Number(one("jobs") || 3)));
+    const timeoutMs = num("timeout", { fallback: 30_000, min: 100 });
+    const settleMs = num("settle", { fallback: 700, min: 0 });
+    const jobs = Math.min(8, num("jobs", { fallback: 3, min: 1, int: true }));
     const waitFor = one("wait-for") ? String(one("wait-for")) : undefined;
     const insets = one("insets") === undefined ? null : (one("insets") === true ? "1" : String(one("insets")));
     const clicks = many(args.click);
@@ -430,6 +467,10 @@ export async function run(argv, cfg) {
         await browser.close();
     }
     manifest.shots = results.flat();
+    if (!manifest.shots.length) {
+        failed++;
+        process.stderr.write(`${cfg.tool}: no shot was taken, so nothing was checked\n`);
+    }
     const manifestFile = join(outDir, `manifest${label ? `-${label}` : ""}.json`);
     writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     if (cfg.report) cfg.report(manifest);

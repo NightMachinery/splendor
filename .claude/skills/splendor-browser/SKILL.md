@@ -114,8 +114,14 @@ and right, 21px bottom) for the `--sp-safe-*` tokens.
 Other capture options: `--page=board|lobby|home|login|settings` or
 `--path=/x`, `--full` (whole document), `--click=SELECTOR` (a real tap on
 touch viewports, repeatable), `--eval=EXPR`, `--wait-for=EXPR`,
-`--timeout=MS`, `--settle=MS`, `--jobs=N` (tabs in flight, default 3),
-`--label`, `--json`, `--png` (probe.mjs only).
+`--timeout=MS`, `--settle=MS`, `--jobs=N` (tabs in flight, default 3, at
+most 8), `--label`, `--json`, `--png` (probe.mjs only). Every option is
+checked before a browser starts: an unknown one, a number out of range
+(`--jobs` a whole number from 1, `--timeout` at least 100, `--settle` at
+least 0, `--dpr` from 0.1 to 4), an option without its value, a flag with
+one, or a `--vp` that names no viewport is a usage error (exit 2). A run
+that ends with no shot at all fails (exit 1), so an empty run can never
+pass `--assert`.
 
 ## Readiness
 
@@ -215,8 +221,8 @@ cannot screenshot or emulate touch.
 
 `node --test .claude/skills/splendor-browser/tests/*.test.mjs` (from the
 repository root) checks the scripts without a game stack: the probe's hit
-grid on its own test page, which network answers count as expected and
-the identity check. Tests that need Chrome are skipped when it is missing, and
+grid on its own test page, which network answers count as expected, the
+identity check and option validation. Tests that need Chrome are skipped when it is missing, and
 each one checks that it left no profile behind. Run them after changing
 anything under `scripts/`.
 
