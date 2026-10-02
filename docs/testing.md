@@ -33,6 +33,7 @@ pnpm exec playwright install chromium webkit
 pnpm run test:unit          # node:test unit tests
 pnpm test                   # mocked suite (starts astro dev on 127.0.0.1:4329)
 pnpm run test:e2e:fake      # full-stack suites, offline, on the fake stack
+pnpm run lint:css           # the CSS lint (client/tools/lint-css.mjs)
 ```
 
 Against a real stack (see "Running against a real stack"):
@@ -50,11 +51,22 @@ The scripts in `client/package.json`:
 
 - `test`: the mocked projects.
 - `test:unit`: `node --test` over `tests/unit/**/*.test.mjs`.
+- `test:unit:sp`: only the unit tests of the redesign's pure rule modules
+  (`tests/unit/sp-*.test.mjs`, for `client/src/scripts/sp/`).
 - `test:e2e`: every `e2e-*` project.
 - `test:e2e:api`: `e2e-api` only.
 - `test:e2e:ui`: the rendered-game projects (`e2e-*-*`).
 - `test:e2e:fake`, `test:e2e:fake:api`: the same with `E2E_FAKE_STACK=1`.
+- `test:sp`: the redesign's Playwright specs (`tests/sp-*.spec.ts`) on
+  `mocked-desktop-chromium`. None exist yet, so it passes with no tests
+  (`--pass-with-no-tests`).
 - `test:all`: unit tests, then the mocked suite.
+- `lint:css`: the CSS lint for iOS-safe syntax and the redesign's tokens
+  (`node tools/lint-css.mjs`; see [ui/foundations.md](ui/foundations.md)).
+  Legacy files are allowlisted in `tools/lint-css.allow.json`.
+- `lint:css:self-test`: the lint's own fixtures (`--self-test`).
+- `check:assets`: `python3 art/build-assets.py --check`, which fails when a
+  generated icon or background is out of date. Needs Pillow.
 
 Extra arguments go straight to Playwright, for example `pnpm test
 tests/game.spec.ts` or `pnpm run test:e2e:fake --headed`. A script already

@@ -10,12 +10,17 @@
         "astro": "astro",
         "test": "playwright test --project='mocked-*'",
         "test:unit": "node --test 'tests/unit/**/*.test.mjs'",
+        "test:unit:sp": "node --test 'tests/unit/sp-*.test.mjs'",
         "test:e2e": "playwright test --project='e2e-*'",
         "test:e2e:api": "playwright test --project=e2e-api",
         "test:e2e:ui": "playwright test --project='e2e-*-*'",
         "test:e2e:fake": "E2E_FAKE_STACK=1 playwright test --project='e2e-*'",
         "test:e2e:fake:api": "E2E_FAKE_STACK=1 playwright test --project=e2e-api",
-        "test:all": "pnpm run test:unit && pnpm run test"
+        "test:sp": "playwright test tests/sp- --project=mocked-desktop-chromium --pass-with-no-tests",
+        "test:all": "pnpm run test:unit && pnpm run test",
+        "lint:css": "node tools/lint-css.mjs",
+        "lint:css:self-test": "node tools/lint-css.mjs --self-test",
+        "check:assets": "python3 art/build-assets.py --check"
     },
     "dependencies": {
         "@astrojs/react": "^2.1.0",
