@@ -95,8 +95,10 @@ What the board shows:
 - at the end every perspective gets `#gameover-modal` (VICTORY for the
   winner);
 - after a game ends the Lobby Service forgets the session, so names fall back
-  to usernames (`cdp_p1_2` instead of `cdp-p1`) and a 400 from
-  `/ls/api/sessions/ID` is expected (the probe marks it as expected).
+  to usernames (`cdp_p1_2` instead of `cdp-p1`). A tab that is open while the
+  game ends sees its held session poll (`/ls/api/sessions/ID?hash=...`)
+  answered with 406, and the next poll with 400. Once the board shows the
+  game as over, the probe marks both as expected.
 
 ## Viewports (`--vp`, comma separated)
 
@@ -149,7 +151,8 @@ visible board cards, nobles and cities, plus these findings:
   a stacking bug.
 - broken images, console errors and exceptions, HTTP responses of 400 or
   more and failed requests. The Lobby Service's 408 long-poll timeout is
-  marked expected.
+  marked expected, and so are the 406 and 400 on the LS session poll of a
+  finished game.
 
 Intentional off-canvas parts are excluded: the closed menu, the parked page
 transition curtain, the history drawer's peek, the other-player hover

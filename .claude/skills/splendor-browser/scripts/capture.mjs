@@ -64,13 +64,21 @@ export const ASSERTIONS = /** @type {const} */ ([
 
 /**
  * Network failures that are part of normal operation: the Lobby Service's
- * long-poll timeout (408 with ?hash=) and the Lobby Service forgetting a
- * finished game (400).
+ * long-poll timeout (408 with ?hash=), and two answers about a game that has
+ * ended, since the Game Service then deletes the LS session. The board's
+ * session poll that is held open at that moment gets 406 (asyncrestlib ends
+ * held requests of a removed session that way), and the next one 400. Both
+ * are expected only once the board shows the game as over.
  * @param {{ url: string, status?: number, error?: string }} n @param {any} probe
  */
 export const expectedNetwork = (n, probe) => {
     if (n.status === 408 && /[?&]hash=/.test(n.url)) return "long-poll timeout";
-    if (n.status === 400 && /\/ls\/api\/sessions\/\d+/.test(n.url) && probe?.splendor?.gameOver) return "LS forgets a finished game";
+    if (!probe?.splendor?.gameOver) return null;
+    let path = "";
+    try { path = new URL(n.url).pathname; } catch { return null; }
+    if (!/^\/ls\/api\/sessions\/\d+$/.test(path)) return null;
+    if (n.status === 406 && /[?&]hash=/.test(n.url)) return "LS drops the held poll of a finished game";
+    if (n.status === 400) return "LS forgets a finished game";
     return null;
 };
 
