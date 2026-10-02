@@ -94,13 +94,34 @@ export const isDefinitiveAuthRejection = (status, bodyText = "") => {
 };
 
 /**
- * fetch() that turns a network failure into a TransientAuthError.
+ * How long an identity request (local-auth or a migrate check) may take,
+ * headers and body together. verifyCredentials() caches its pending promise
+ * and every poll cycle and action awaits it, so a request that never
+ * finishes (a dead socket after a network switch, a stalled LS) would
+ * otherwise freeze the page with no "Reconnecting..." indicator.
  */
-const fetchOrTransient = async (url, init) => {
+export const IDENTITY_REQUEST_TIMEOUT_MS = 15000;
+
+/**
+ * fetch() and read the body as text, with a timeout. Turns a network
+ * failure or a timeout into a TransientAuthError.
+ *
+ * @returns {Promise<{ok: boolean, status: number, text: string}>}
+ */
+const fetchTextOrTransient = async (url, init = {}) => {
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), IDENTITY_REQUEST_TIMEOUT_MS);
     try {
-        return await fetch(url, init);
+        const resp = await fetch(url, { ...init, signal: controller.signal });
+        const text = await resp.text();
+        return { ok: resp.ok, status: resp.status, text };
     } catch(err) {
+        if(controller.signal.aborted) {
+            throw new TransientAuthError(`The lobby service did not answer within ${IDENTITY_REQUEST_TIMEOUT_MS / 1000} s.`);
+        }
         throw new TransientAuthError(`Could not reach the lobby service: ${err && err.message ? err.message : err}`);
+    } finally {
+        clearTimeout(abortTimer);
     }
 };
 
@@ -130,12 +151,15 @@ const checkCredentialsNow = async (options = {}) => {
     const roomToken = getRoomMigrateToken();
     const roomId = getRoomId();
     if(roomToken && roomId) {
-        const resp = await fetchOrTransient(`${SETTINGS.getLS_API()}/api/sessions/${roomId}/migrate/${roomToken}`);
+        const resp = await fetchTextOrTransient(`${SETTINGS.getLS_API()}/api/sessions/${roomId}/migrate/${roomToken}`);
         if(resp.ok) {
             let data = null;
             try {
-                data = await resp.json();
+                data = JSON.parse(resp.text);
             } catch(err) {
+                data = null;
+            }
+            if(!data || typeof data.name !== "string") {
                 throw new TransientAuthError("Lobby service sent an unreadable migrate reply.", resp.status);
             }
             sessionStorage.setItem(`roomUser:${roomId}:${roomToken}`, data.name);
@@ -167,12 +191,12 @@ const checkCredentialsNow = async (options = {}) => {
         SETTINGS.setAccessToken(token);
     }
 
-    const resp = await fetchOrTransient(`${SETTINGS.getLS_API()}/api/local-auth`, {
+    const resp = await fetchTextOrTransient(`${SETTINGS.getLS_API()}/api/local-auth`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token, displayName })
     });
-    const bodyText = await resp.text().catch(() => "");
+    const bodyText = resp.text;
     if(!resp.ok) {
         if(isDefinitiveAuthRejection(resp.status, bodyText)) {
             SETTINGS.clearLocalIdentity();
