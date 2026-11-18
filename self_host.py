@@ -5,7 +5,8 @@ and the web front, each in its own tmux session.
 The default instance is the production deployment (data in .self-host/,
 public site through ~/Caddyfile). Named instances (instance-start NAME) are
 isolated copies for tests and visual checks: own data dir, own ports, own
-private Caddy, and they never touch ~/Caddyfile or the default sessions.
+private Caddy, own client build, and they never touch ~/Caddyfile,
+client/dist or the default sessions.
 See docs/self-hosting.md.
 """
 import argparse
@@ -51,6 +52,8 @@ EXPECTED_SERVICES = ["splendor_BASE_ORIENT", "splendor_BASE_ORIENT_CITIES", "spl
                      "splendor_BASE_ORIENT_TRADE_ROUTES"]
 # Logged by the GS once every service is registered.
 GS_REGISTERED_LOG_LINE = "Registered game on lobby service"
+# Held while building the client and while replacing or copying client/dist.
+CLIENT_BUILD_LOCK = DATA / "client-build.lock"
 CLIENT_INPUTS = ["src", "public", "astro.config.mjs", "package.json", "pnpm-lock.yaml",
                  "tailwind.config.cjs", "tsconfig.json"]
 PROXY_VARS = [
@@ -653,8 +656,8 @@ def client_inputs_mtime():
     return newest
 
 
-def dist_is_stale():
-    index = DIST / "index.html"
+def dist_is_stale(dist):
+    index = dist / "index.html"
     return not index.exists() or index.stat().st_mtime < client_inputs_mtime()
 
 
@@ -671,7 +674,10 @@ def build_client_staging():
     that to outDir without awaiting the copy before deleting client/.astro,
     so such a build fails at random with ENOENT once the site has enough
     files. node_modules/.cache is ignored by git and is on the same file
-    system as client/dist, so the swap is still a rename.
+    system as client/dist and .self-host/, so moving the build into place is
+    still a rename.
+
+    Callers hold CLIENT_BUILD_LOCK.
     """
     staging = CLIENT / "node_modules" / ".cache" / f"splendor-dist-staging-{os.getpid()}"
     if staging.exists():
@@ -685,8 +691,24 @@ def build_client_staging():
     return staging
 
 
+def move_into_place(src, dest):
+    """Move the finished directory src to dest, replacing dest, so dest is never half-written.
+
+    src goes to a temporary sibling of dest first: a rename on one file
+    system, a copy otherwise. That sibling then replaces dest by renames.
+    """
+    tmp = dest.with_name(dest.name + f".new-{os.getpid()}")
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    shutil.move(str(src), str(tmp))
+    replace_dir(tmp, dest)
+
+
 def swap_dist(staging):
-    """Replace client/dist with a finished build by two renames, so it is never half-written."""
+    """Replace client/dist with a finished build by two renames, so it is never half-written.
+
+    Callers hold CLIENT_BUILD_LOCK, so an instance never copies a half-swapped client/dist.
+    """
     old = DATA / "build" / f"dist-old-{os.getpid()}"
     # Builds no longer stage in DATA/build, so nothing else may have created it yet.
     old.parent.mkdir(parents=True, exist_ok=True)
@@ -698,17 +720,41 @@ def swap_dist(staging):
     shutil.rmtree(old, ignore_errors=True)
 
 
-def ensure_client_dist(no_build):
-    if no_build:
-        if not (DIST / "index.html").exists():
-            raise SystemExit(f"{DIST} is missing. Run without --no-build to build it.")
-        return
-    with file_lock(DATA / "client-build.lock"):
-        if dist_is_stale():
+def ensure_instance_dist(inst, no_build):
+    """Return the client build a static named instance serves: its own copy in <instance>/dist.
+
+    An instance never serves or rebuilds client/dist. That directory is the
+    default instance's, and replacing it would change what production and
+    every other running instance serve: pages already open there would ask
+    for hashed /_astro/ assets that no longer exist and get index.html back.
+    The instance is stopped while this runs, so its own dist can be replaced.
+
+    The dist is rebuilt when a client source is newer than it. With no_build
+    it is used as it is, or, if the instance has none yet, copied from
+    client/dist.
+    """
+    dist = inst.dir / "dist"
+    with file_lock(CLIENT_BUILD_LOCK):
+        if no_build:
+            if (dist / "index.html").exists():
+                if dist_is_stale(dist):
+                    print(f"Warning: {dist} is older than the client sources; --no-build keeps it anyway.")
+                return dist
+            if not (DIST / "index.html").exists():
+                raise SystemExit(f"Neither {dist} nor {DIST} exists. Run without --no-build to build the client.")
+            print(f"Copying {DIST} to {dist} (--no-build).")
+            tmp = dist.with_name(f"dist.copy-{os.getpid()}")
+            if tmp.exists():
+                shutil.rmtree(tmp)
+            shutil.copytree(DIST, tmp, symlinks=True)
+            move_into_place(tmp, dist)
+            return dist
+        if dist_is_stale(dist):
             ensure_node_modules()
-            swap_dist(build_client_staging())
+            move_into_place(build_client_staging(), dist)
         else:
-            print(f"{DIST} is up to date.")
+            print(f"{dist} is up to date.")
+    return dist
 
 
 # -------------------------------------------------------------------- Caddy
@@ -794,8 +840,8 @@ def update_caddy(url, p, dev=False):
     run(["caddy", "reload", "--config", str(CADDYFILE)])
 
 
-def instance_caddyfile(inst, p):
-    """A private Caddy config: no admin API, no HTTPS, loopback only, own storage.
+def instance_caddyfile(inst, p, dist):
+    """A private Caddy config: no admin API, no HTTPS, loopback only, own storage, own client build.
 
     Caddy's autosave and data go to XDG dirs that start_web points into the
     instance, so nothing touches the user's Caddy state.
@@ -808,13 +854,13 @@ def instance_caddyfile(inst, p):
 
 http://:{p['web']} {{
     bind 127.0.0.1
-{site_routes(p, static_frontend(DIST))}}}
+{site_routes(p, static_frontend(dist))}}}
 """
 
 
-def start_web(inst, p, mode):
+def start_web(inst, p, mode, dist=None):
     if mode == "static":
-        inst.caddyfile.write_text(instance_caddyfile(inst, p))
+        inst.caddyfile.write_text(instance_caddyfile(inst, p, dist))
         caddy_home = inst.dir / "caddy"
         tmux_new(
             inst.sessions["web"],
@@ -945,7 +991,7 @@ def build(dev=False):
         run(["pnpm", "import"], cwd=CLIENT, env=env_with_proxy())
     run(["pnpm", "install", "--frozen-lockfile", "--prefer-offline"], cwd=CLIENT, env=env_with_proxy())
     if not dev:
-        with file_lock(DATA / "client-build.lock"):
+        with file_lock(CLIENT_BUILD_LOCK):
             swap_dist(build_client_staging())
     build_jars()
 
@@ -958,7 +1004,7 @@ def build_release():
     """
     DATA.mkdir(exist_ok=True)
     run(["pnpm", "install", "--frozen-lockfile", "--prefer-offline"], cwd=CLIENT, env=env_with_proxy())
-    with file_lock(DATA / "client-build.lock"):
+    with file_lock(CLIENT_BUILD_LOCK):
         dist_staging = build_client_staging()
     build_jars(clean=True)
     return dist_staging, stage_target_jars()
@@ -1007,7 +1053,8 @@ def setup(args):
     dist_staging, jars_staging = build_release()
     stop()
     ports(reset=True)
-    swap_dist(dist_staging)
+    with file_lock(CLIENT_BUILD_LOCK):
+        swap_dist(dist_staging)
     replace_dir(jars_staging, DEFAULT.jars)
     launch_default(args)
 
@@ -1031,7 +1078,8 @@ def redeploy(args):
     stop()
     if PREVIOUS.exists():
         shutil.rmtree(PREVIOUS)
-    replace_dir(dist_staging, DIST, keep=PREVIOUS / "dist")
+    with file_lock(CLIENT_BUILD_LOCK):
+        replace_dir(dist_staging, DIST, keep=PREVIOUS / "dist")
     replace_dir(jars_staging, DEFAULT.jars, keep=PREVIOUS / "jars")
     try:
         launch_default(args)
@@ -1045,7 +1093,8 @@ def redeploy(args):
             shutil.rmtree(failed)
         replace_dir(PREVIOUS / "jars", DEFAULT.jars, keep=failed / "jars")
         if (PREVIOUS / "dist").exists():
-            replace_dir(PREVIOUS / "dist", DIST, keep=failed / "dist")
+            with file_lock(CLIENT_BUILD_LOCK):
+                replace_dir(PREVIOUS / "dist", DIST, keep=failed / "dist")
         launch_default(args)
         shutil.rmtree(PREVIOUS, ignore_errors=True)
         raise SystemExit(f"Redeploy failed and was rolled back. The failed build is in {failed}; "
@@ -1100,8 +1149,8 @@ def stop_instance(inst):
     return busy
 
 
-def instance_info(inst, p, mode):
-    return {
+def instance_info(inst, p, mode, dist=None):
+    info = {
         "name": inst.name,
         "mode": mode,
         "baseUrl": f"http://127.0.0.1:{p['web']}",
@@ -1110,6 +1159,9 @@ def instance_info(inst, p, mode):
         "ports": {"lobby": p["lobby"], "game": p["game"], "web": p["web"]},
         "dataDir": str(inst.dir),
     }
+    if dist is not None:
+        info["distDir"] = str(dist)
+    return info
 
 
 def instance_start(args):
@@ -1123,8 +1175,9 @@ def instance_start(args):
         print(f"Restarting {inst.label}.")
     stop_instance(inst)
     inst.prepare()
+    dist = None
     if mode == "static":
-        ensure_client_dist(args.no_build)
+        dist = ensure_instance_dist(inst, args.no_build)
     elif not args.no_build:
         ensure_node_modules()
     check_jar(LS_JAR, LS_BUILD_HINT)
@@ -1134,12 +1187,12 @@ def instance_start(args):
     p = instance_ports(inst)
     try:
         start_backend(inst, p, lsjar, gsjar)
-        start_web(inst, p, mode)
+        start_web(inst, p, mode, dist)
     except BaseException:
         print(f"Start failed; stopping {inst.label}. Logs stay in {inst.logs}.", file=sys.stderr)
         stop_instance(inst)
         raise
-    info = instance_info(inst, p, mode)
+    info = instance_info(inst, p, mode, dist)
     write_json(inst.info_file, info)
     print(json.dumps(info, indent=2))
 
@@ -1196,9 +1249,10 @@ def main():
     parser.add_argument("name", nargs="?", help="instance name, for the instance-* commands")
     parser.add_argument("--url", default=default_url(), help="public URL of the default instance")
     parser.add_argument("--mode", choices=["static", "dev"], default="static",
-                        help="instance-start: web front is a private Caddy over client/dist (static) or astro dev (dev)")
+                        help="instance-start: web front is a private Caddy over the instance's own client build "
+                             "(static) or astro dev (dev)")
     parser.add_argument("--no-build", action="store_true",
-                        help="instance-start: do not build client/dist or install node_modules")
+                        help="instance-start: do not build the client or install node_modules")
     parser.add_argument("--force", action="store_true",
                         help="redeploy: go ahead even if the lobby service still holds sessions")
     args = parser.parse_args()

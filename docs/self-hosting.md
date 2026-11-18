@@ -5,7 +5,8 @@ Splendor runs as three processes on one machine, without Docker:
 - the **Lobby Service (LS)**, vendored in `setup/LobbyService` and built with
   its SQLite profile. It owns users, sessions and the game service registry;
 - the **game server (GS)** in `server/`. It owns the running games;
-- a **web front**: Caddy serving the built client (`client/dist`), or the Astro
+- a **web front**: Caddy serving the built client (`client/dist` for the
+  default instance, the instance's own copy for a named one), or the Astro
   dev server in dev mode. It also proxies `/ls/*` to the LS and `/gs/*` to the
   GS, because the browser always calls `${origin}/ls` and `${origin}/gs`.
 
@@ -19,8 +20,9 @@ deployment:
   and `splendor-client-dev`. The live server's tooling relies on these names.
 - a **named instance** (`instance-start NAME`) is an isolated copy for tests
   and visual checks. It has its own data directory, its own ports, its own
-  private Caddy, and tmux sessions named `splendor-NAME-*`. It never touches
-  `~/Caddyfile`, the system Caddy or the default instance.
+  private Caddy, its own client build, and tmux sessions named
+  `splendor-NAME-*`. It never touches `~/Caddyfile`, the system Caddy,
+  `client/dist` or the default instance.
 
 Security notes, the token model and known gaps are in
 [security.md](security.md).
@@ -71,11 +73,12 @@ lowercase letters, digits, `-` and `_`, at most 32 characters.
 `instance-start NAME`:
 
 1. stops the instance first if it was running (a restart keeps its data);
-2. in `--mode static` (the default), rebuilds `client/dist` if any client
-   source is newer than it, unless `--no-build` is given. The build goes to a
-   staging directory and is swapped in by renaming, so a running front never
-   serves a half-written `dist`. In `--mode dev` it only makes sure
-   `client/node_modules` exists;
+2. in `--mode static` (the default), rebuilds the instance's own client,
+   `<instance>/dist`, if any client source is newer than it. The build goes
+   to a staging directory and is moved into place by renaming, so the front
+   never serves a half-written `dist`. With `--no-build` it keeps the
+   instance's `dist` as it is, or copies `client/dist` if the instance has
+   none yet. In `--mode dev` it only makes sure `client/node_modules` exists;
 3. copies `setup/LobbyService/target/ls.jar` and
    `server/target/splendorGame.jar` into the instance, so a later rebuild
    cannot change them under the running JVMs. It never builds the jars: if one
@@ -102,9 +105,12 @@ again and exits non-zero. `instance.json` looks like this:
   "lsUrl": "http://127.0.0.1:35100",
   "gsUrl": "http://127.0.0.1:35101",
   "ports": {"lobby": 35100, "game": 35101, "web": 35102},
-  "dataDir": "/path/to/splendor/.self-host/instances/e2e"
+  "dataDir": "/path/to/splendor/.self-host/instances/e2e",
+  "distDir": "/path/to/splendor/.self-host/instances/e2e/dist"
 }
 ```
+
+`distDir` (static mode only) is the client build the front serves.
 
 `baseUrl` is the web front: open it in a browser, and call `baseUrl/ls/...`
 and `baseUrl/gs/...` to go through the same routes and rules as production.
@@ -115,11 +121,21 @@ The two web fronts:
 - `--mode static` runs a private Caddy (`caddy run --config
   <instance>/Caddyfile --adapter caddyfile`). Its config has `admin off` and
   `auto_https off`, listens on 127.0.0.1 only, and keeps Caddy's state under
-  `<instance>/caddy`. It serves `client/dist` with the same SPA fallback, the
-  same `/ls` and `/gs` proxies and the same route rules as the production
-  block.
+  `<instance>/caddy`. It serves the instance's own `dist` with the same SPA
+  fallback, the same `/ls` and `/gs` proxies and the same route rules as the
+  production block.
 - `--mode dev` runs `astro dev` on the web port, with the Vite proxy described
   in "Local development" and its own Vite cache directory.
+
+A static instance has its own client build because a shared `client/dist`
+would tie every front to it. Replacing it under a running front breaks the
+pages already open there: they ask for hashed `/_astro/` files that no longer
+exist, and the SPA fallback answers those with `index.html`. On the
+production server it would also put a new client in front of the old
+backends before `redeploy` ran. The cost is one client build per instance
+after each client change (about 11 seconds on a recent laptop) and about 7 MB
+of disk per instance. To point other tools at the same build, read
+`distDir` from `instance.json`.
 
 `instance-stop NAME` kills the instance's tmux sessions, waits until its ports
 are released, kills any leftover java or caddy process started from the
@@ -165,8 +181,9 @@ Every web front, production or private, routes requests the same way:
 
 - `/ls/*` goes to the LS with the `/ls` prefix removed;
 - `/gs/*` goes to the GS with the `/gs` prefix removed;
-- everything else is a static file from `client/dist`, with a fallback to
-  `index.html`.
+- everything else is a static file from the front's client build
+  (`client/dist`, or `<instance>/dist` for a named instance), with a
+  fallback to `index.html`.
 
 Two kinds of request are refused from the public side with 403, because only
 the backends themselves make them and they talk over 127.0.0.1 directly:
@@ -196,14 +213,15 @@ instance keeps the same files in `.self-host/instances/NAME/`:
 - `ports.json`: the ports this deployment uses.
 - `logs/`: service output (see "Logs").
 - `jars/`: the copies of `ls.jar` and `splendorGame.jar` the JVMs run from.
-- named instances only: `Caddyfile`, `caddy/` (the private Caddy's state),
-  `vite-cache/` (dev mode) and `instance.json` (while running).
+- named instances only: `dist/` (the instance's own client build, static
+  mode), `Caddyfile`, `caddy/` (the private Caddy's state), `vite-cache/`
+  (dev mode) and `instance.json` (while running).
 - `.self-host/build/` (shared): the staging area for jars. A redeploy keeps
   the next jars, the previous build and, after a rollback, the failed build
   (`build/failed/`) there.
 - `client/node_modules/.cache/splendor-dist-staging-PID/`: where client
-  builds of any instance go before they are swapped into `client/dist`. It
-  has to be inside `client/`: Astro 2.0.13 builds an `outDir` outside its
+  builds of any instance go before they are moved into `client/dist` or
+  `<instance>/dist`. It has to be inside `client/`: Astro 2.0.13 builds an `outDir` outside its
   working directory in `client/.astro` first and deletes that folder before
   its copy to `outDir` has finished, so such a build fails at random with
   ENOENT once the site has enough files.
