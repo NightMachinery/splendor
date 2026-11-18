@@ -93,13 +93,20 @@ public class SessionManager {
     public synchronized GameSession createNewSession(String sessionId, List<PlayerInfo> players,
                                         String creatorName, String sessionName,
                                         GameVersions version) throws SplendorException {
+        return createNewSession(sessionId, players, creatorName, sessionName, version, null);
+    }
+
+    synchronized GameSession createNewSession(String sessionId, List<PlayerInfo> players,
+                                              String creatorName, String sessionName,
+                                              GameVersions version, String botPlayer) throws SplendorException {
         checkSessionId(sessionId);
         checkPlayers(players);
+        checkBotSeat(players, creatorName, botPlayer);
         if (version == null) {
             throw new SplendorException("Game can not be created, unknown game version.");
         }
 
-        GameSession session = new GameSession(sessionId, creatorName, sessionName);
+        GameSession session = new GameSession(sessionId, creatorName, sessionName, botPlayer);
         session.setGame(this.launchNewGame(version, players));
 
         gameSessions.put(sessionId, session);
@@ -119,6 +126,7 @@ public class SessionManager {
                                      LaunchSessionInfo launchSessionInfo) throws SplendorException {
         checkSessionId(sessionId);
         checkPlayers(launchSessionInfo.players());
+        checkBotSeat(launchSessionInfo.players(), launchSessionInfo.creator(), launchSessionInfo.botPlayer());
 
         List<Player> curPlayers = game.getPlayers();
 
@@ -160,7 +168,8 @@ public class SessionManager {
             p.setColour(pi.colour());
         }
 
-        GameSession session = new GameSession(sessionId, launchSessionInfo.creator(), launchSessionInfo.savegame());
+        GameSession session = new GameSession(sessionId, launchSessionInfo.creator(), launchSessionInfo.savegame(),
+                launchSessionInfo.botPlayer());
         session.setGame(game);
 
         gameSessions.put(sessionId, session);
@@ -205,6 +214,14 @@ public class SessionManager {
         if (gameSessions.containsKey(sessionId)) {
             throw new SplendorException("Game can not be created, the requested ID " + sessionId
                     + " is already in use.");
+        }
+    }
+
+    private static void checkBotSeat(List<PlayerInfo> players, String creator, String botPlayer) {
+        if (botPlayer != null && (players.size() != 2 || botPlayer.equals(creator)
+                || players.stream().noneMatch(player -> player.name().equals(botPlayer))
+                || players.stream().noneMatch(player -> player.name().equals(creator)))) {
+            throw new SplendorException("Practice games require one host and one bot.");
         }
     }
 

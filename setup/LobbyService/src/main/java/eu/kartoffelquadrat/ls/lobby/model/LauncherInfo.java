@@ -1,5 +1,6 @@
 package eu.kartoffelquadrat.ls.lobby.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.LinkedList;
 
 /**
@@ -19,6 +20,8 @@ public class LauncherInfo {
     // Optional id of a savegame to load.
     String savegame;
 
+    private String botPlayer;
+
     public LauncherInfo() {
     }
 
@@ -34,6 +37,15 @@ public class LauncherInfo {
         this.players = players;
         this.creator = creator;
         this.savegame = savegame;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String getBotPlayer() {
+        return botPlayer;
+    }
+
+    public void setBotPlayer(String botPlayer) {
+        this.botPlayer = botPlayer;
     }
 
     public String getGameServer() {

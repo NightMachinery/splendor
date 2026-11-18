@@ -10,7 +10,10 @@ export const MODERATION_ICONS = {
     unshield: `<svg viewBox="0 0 24 24"><path d="m3 4.3 1.3-1.3 17 17-1.3 1.3-3.1-3.1A14 14 0 0 1 12 22c-5-2-8-6-8-11V6.3L3 4.3ZM12 2l8 3v6c0 1.7-.3 3.3-1 4.7L6.6 3.3 12 2Z"/></svg>`
 };
 
-export const playerAlias = (session, player) => (session?.displayNames || {})[player] || player;
+const PRACTICE_BOT = "__splendor_practice_bot__";
+
+export const playerAlias = (session, player) => session?.displayNames?.[player]
+    || (player === PRACTICE_BOT ? "Practice Bot" : player);
 export const isObserver = (session, player) => (session?.observers || []).includes(player);
 export const isMod = (session, player) => !!session && (session.creator === player || (session.mods || []).includes(player));
 export const isTempMod = (session, player) => (session?.tempMods || []).includes(player);
@@ -108,7 +111,7 @@ export const renderPlayerBadges = (container, session, player, badgeClass = "pla
 export const renderModerationActions = (container, session, sessionId, player, options = {}) => {
     if(!container) return;
     container.innerHTML = "";
-    if(!session) return;
+    if(!session || session.botPlayer === player) return;
     const username = SETTINGS.getUsername();
     const alias = playerAlias(session, player);
     const observer = isObserver(session, player);
@@ -129,7 +132,7 @@ export const renderModerationActions = (container, session, sessionId, player, o
                 const ok = await postModerationAction(e.currentTarget, `/api/sessions/${sessionId}/players/${player}/observer`, { observer: false }, `${alias} rejoined as a player.`);
                 if(ok) afterAction();
             }, "joinback"));
-    } else if(canModerate(session, username) && !observer) {
+    } else if(canModerate(session, username) && !observer && (!session.botPlayer || !session.players.includes(player))) {
         container.appendChild(makeIconButton(`Make ${alias} an observer`, MODERATION_ICONS.observe,
             async (e) => {
                 const ok = await postModerationAction(e.currentTarget, `/api/sessions/${sessionId}/players/${player}/observer`, { observer: true }, `${alias} is now an observer.`);

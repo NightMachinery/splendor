@@ -9,6 +9,7 @@ import java.util.UUID;
  */
 public class GameSession {
     private final String sessionId;
+    private final String botPlayer;
     private boolean launched;
     private Game game;
     private UUID gameInstanceId;
@@ -23,6 +24,19 @@ public class GameSession {
      * @param sessionName       Name of this session
      */
     public GameSession(String sessionId, String creatorUsername, String sessionName) {
+        this(sessionId, creatorUsername, sessionName, null);
+    }
+
+    /**
+     * Initialize a game session with an optional bot seat.
+     *
+     * @param sessionId Session id
+     * @param creatorUsername Username of the creator
+     * @param sessionName Name of this session
+     * @param botPlayer Username of the server-managed seat, if present
+     */
+    public GameSession(String sessionId, String creatorUsername, String sessionName, String botPlayer) {
+        this.botPlayer = botPlayer;
         this.launched = false;
         this.sessionId = sessionId;
         this.game = null;
@@ -92,6 +106,15 @@ public class GameSession {
      */
     public String getCreatorUsername() {
         return this.creatorUsername;
+    }
+
+    /**
+     * Get the server-managed seat, if any.
+     *
+     * @return the bot's player name, or null for a human-only game
+     */
+    public String getBotPlayer() {
+        return botPlayer;
     }
 
 }

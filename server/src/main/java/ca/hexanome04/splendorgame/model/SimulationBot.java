@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * A bot for simulation tests that only plays legal moves, computed from the visible game state on its own
- * (it does not ask the server which moves are legal, so that a server bug shows up as a rejected move).
+ * Bot policy shared by practice games and simulation tests. It chooses actions from the visible
+ * game state and the current player's available actions.
  *
  * <p>Strategy: answer pending follow-ups first; otherwise buy the most valuable card it can pay for exactly,
  * sometimes reserve, otherwise take tokens towards the card closest to affordable (returning tokens to stay at

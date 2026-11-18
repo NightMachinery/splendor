@@ -4,12 +4,14 @@ import ca.hexanome04.splendorgame.control.templates.LaunchSessionInfo;
 import ca.hexanome04.splendorgame.control.templates.PlayerInfo;
 import ca.hexanome04.splendorgame.model.GameSession;
 import ca.hexanome04.splendorgame.model.Player;
+import ca.hexanome04.splendorgame.model.SimulationBot;
 import ca.hexanome04.splendorgame.model.SplendorException;
 import ca.hexanome04.splendorgame.model.action.ActionDecoder;
 import ca.hexanome04.splendorgame.model.action.ActionResult;
 import ca.hexanome04.splendorgame.model.action.Actions;
 import ca.hexanome04.splendorgame.model.gameversions.Game;
 import ca.hexanome04.splendorgame.model.gameversions.GameVersions;
+import ca.hexanome04.splendorgame.model.gameversions.orient.OrientGame;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -18,7 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import javax.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +52,13 @@ public class SplendorRestController {
     private final GameSavesManager gameSavesManager;
     private final long longPollTimeout;
     private final Map<String, GameStateWatcher> gameWatcher;
+    private static final int BOT_MOVE_DELAY_MS = 450;
+    private static final int MAX_BOT_ACTIONS_PER_TURN = 16;
+    private final ScheduledExecutorService botMoves = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "splendor-practice-bot");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     // how many state long-polls are held at once per game; a poll beyond that pushes out the oldest
     @Value("${longpoll.maxHeldPerGame:64}")
@@ -215,10 +230,14 @@ public class SplendorRestController {
             sessionManager.createNewSession(sessionId, launchSessionInfo.players(),
                     launchSessionInfo.creator(),
                     savegame,
-                    gameVersion);
+                    gameVersion, launchSessionInfo.botPlayer());
         }
         logger.info("Launched new game session: " + sessionId);
-        gameWatcher.put(sessionId, newWatcher(sessionManager.getGameSession(sessionId)));
+        GameSession session = sessionManager.getGameSession(sessionId);
+        synchronized (session) {
+            gameWatcher.put(sessionId, newWatcher(session));
+            scheduleBotMove(session, MAX_BOT_ACTIONS_PER_TURN);
+        }
     }
 
     /**
@@ -360,7 +379,8 @@ public class SplendorRestController {
             }
 
             // checked outside the session lock: it is a network call to the lobby service
-            if (token == null || token.isEmpty() || !playerName.equals(auth.getNameFromToken(token))) {
+            if (playerName.equals(session.getBotPlayer()) || token == null || token.isEmpty()
+                    || !playerName.equals(auth.getNameFromToken(token))) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token does not match requested players name.");
             }
 
@@ -395,6 +415,7 @@ public class SplendorRestController {
 
                 logger.info("Valid actions AFTER turn:  " + game.getCurValidActions() + "\n");
                 gameEnded = game.isGameOver();
+                scheduleBotMove(session, MAX_BOT_ACTIONS_PER_TURN);
             }
 
             // mark that the game state has changed, before the (slow, fallible) lobby service call
@@ -411,6 +432,59 @@ public class SplendorRestController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Server ran into an issue while executing an action.");
         }
+    }
+
+    // Called with the session locked after launch, restart or an accepted action.
+    private void scheduleBotMove(GameSession session, int actionsRemaining) {
+        String botPlayer = session.getBotPlayer();
+        Game game = session.getGame();
+        if (botPlayer == null || game.isGameOver() || !botPlayer.equals(game.getTurnCurrentPlayer().getName())) {
+            return;
+        }
+        if (actionsRemaining == 0) {
+            logger.warn("Practice bot exceeded its action limit in game {}", session.getSessionId());
+            return;
+        }
+        UUID gameId = session.getGameInstanceId();
+        botMoves.schedule(() -> playBotMove(session, gameId, actionsRemaining),
+                BOT_MOVE_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void playBotMove(GameSession session, UUID gameId, int actionsRemaining) {
+        String sessionId = session.getSessionId();
+        boolean gameEnded;
+        try {
+            synchronized (session) {
+                // A restart can replace the game while its previous bot move is queued.
+                if (!gameId.equals(session.getGameInstanceId())) {
+                    return;
+                }
+                OrientGame game = (OrientGame) session.getGame();
+                Player player = game.getTurnCurrentPlayer();
+                if (game.isGameOver() || !player.getName().equals(session.getBotPlayer())) {
+                    return;
+                }
+                var action = new SimulationBot(new Random()).chooseAction(game, player);
+                var result = game.takeAction(player.getName(), action);
+                if (!result.contains(ActionResult.VALID_ACTION)) {
+                    logger.warn("Practice bot action rejected in game {}: {}", sessionId, result);
+                    return;
+                }
+                gameEnded = game.isGameOver();
+                scheduleBotMove(session, actionsRemaining - 1);
+            }
+            watcherFor(sessionId, session).markDirty();
+            if (gameEnded) {
+                deleteLobbySession(sessionId);
+            }
+        } catch (RuntimeException e) {
+            logger.warn("Unable to play practice bot move in game " + sessionId, e);
+        }
+    }
+
+    @PreDestroy
+    void stopBotMoves() {
+        botMoves.shutdownNow();
     }
 
     /**
@@ -471,6 +545,7 @@ public class SplendorRestController {
 
                 Game newGame = sessionManager.launchNewGame(gameVersion, playersInfo);
                 gameSession.setGame(newGame);
+                scheduleBotMove(gameSession, MAX_BOT_ACTIONS_PER_TURN);
             }
 
             logger.info("Restarted game session: " + sessionId);

@@ -1,6 +1,7 @@
 import { SETTINGS, GAME_VERSION_TO_BOARD } from "./settings.js";
 import { createNewSession, showSessionTab, focusSession } from "./lobby.js";
 import { showError } from "./notify.js";
+import { playerAlias } from "./moderation-ui.js";
 
 /**
  * Initiate the calls to load/update game save information for the current user.
@@ -87,7 +88,7 @@ const createNewSaveElement = (info) => {
     trNode.querySelector(".game-name").textContent = `${info.name}`;
     trNode.querySelector(".game-creator-name").textContent = `${info.creator}`;
     trNode.querySelector(".game-timestamp").textContent = `${timestamp.toLocaleString()}`;
-    trNode.querySelector(".game-players-info").textContent = `${sesPlayers.join(", ")}`;
+    trNode.querySelector(".game-players-info").textContent = sesPlayers.map(player => playerAlias(null, player)).join(", ");
 
     const loadBtn = trNode.querySelector(".load-btn");
     const delBtn = trNode.querySelector(".del-btn");

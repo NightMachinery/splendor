@@ -233,7 +233,15 @@ Specs:
   desktop guest joins. Both enter the board and take one turn through the
   dialogs. The test checks both tab titles at each turn change, verifies that
   each seat sees one opponent, and checks that the server started with four
-  tokens per ordinary color.
+  tokens per ordinary color. A second test starts a solo session on a
+  320 px viewport, plays a move through the board, closes the tab and checks
+  that the game server still plays the bot turn. It then saves and reloads
+  the two seats. This case runs on the Java stack.
+
+For an interactive smoke test, choose **Create Session**, check **Play vs bot**
+and pick a version. Start the room and play a turn. The bot takes its turn on
+the server so you can test turn changes, saves and the end of a two-player
+game with a single account.
 
 Every game attaches `moves.log`; a failed one also attaches `state.json`,
 `state-before.json` and a screenshot.

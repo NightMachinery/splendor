@@ -24,10 +24,11 @@ const refreshSessionList = () => {
 /**
  * Creates a new session with the specified game version and save id.
  * @param {String} gameVersion game version
- * @param {String} save id (optional)
+ * @param {String} saveId save id (optional)
+ * @param {boolean} solo whether to add a practice bot
  * @returns {Promise<String>} session id
  */
-export const createNewSession = async (gameVersion, saveId="") => {
+export const createNewSession = async (gameVersion, saveId="", solo=false) => {
     await SETTINGS.verifyCredentials();
 
     const postData = {
@@ -35,6 +36,7 @@ export const createNewSession = async (gameVersion, saveId="") => {
         "game": gameVersion,
         "savegame": saveId
     };
+    if(solo) postData.solo = true;
 
     const url = new URL(`${SETTINGS.getLS_API()}/api/sessions`);
     url.search = new URLSearchParams({"access_token": SETTINGS.getAccessToken()}).toString();
@@ -184,6 +186,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     
     const gamePicker = document.querySelector(".game-selection-dropdown");
+    const soloOption = gamePicker.querySelector("input[name=solo]");
     let creatingSession = false;
     gamePicker.querySelectorAll("button[data-version]").forEach(option => {
         option.addEventListener("click", async () => {
@@ -192,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
             gamePicker.open = false;
             gamePicker.querySelector("summary").focus();
             try {
-                focusSession(await createNewSession("splendor_" + option.dataset.version));
+                focusSession(await createNewSession("splendor_" + option.dataset.version, "", soloOption.checked));
             } catch (err) {
                 if (!err?.authRejected) showError(actionErrorText("Creating the session", err));
             } finally {
@@ -365,6 +368,7 @@ document.addEventListener("DOMContentLoaded", () => {
             node.toggleAttribute("created", host);
             node.toggleAttribute("launchable", host && ready && !ses.launched);
             node.toggleAttribute("started", ses.launched);
+            node.toggleAttribute("data-solo", Boolean(ses.botPlayer));
             node.toggleAttribute("data-invited", invited);
 
             let message = "";
@@ -372,8 +376,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 if(joined || invited) message = "Game started.";
             } else if(host) {
                 const needed = Math.max(1, minPlayers - activeCount);
-                message = ready ? `Ready to start with ${activeCount} players.`
-                    : `Waiting for ${needed} more ${needed === 1 ? "player" : "players"}.`;
+                if(ready) {
+                    message = ses.botPlayer ? "Ready to play against the bot." : `Ready to start with ${activeCount} players.`;
+                } else {
+                    message = `Waiting for ${needed} more ${needed === 1 ? "player" : "players"}.`;
+                }
             } else if(joined) {
                 message = "Waiting for the host to start.";
             } else if(invited) {

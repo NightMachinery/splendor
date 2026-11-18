@@ -15,6 +15,7 @@ public class CreateGameForm {
 
     // Optional field to reference a savegame. If a valid savegameid is provided, the amount of players is fixed.
     private String savegame = "";
+    private boolean solo;
 
     /**
      *
@@ -34,6 +35,14 @@ public class CreateGameForm {
 
     public String getCreator() {
         return creator;
+    }
+
+    public boolean isSolo() {
+        return solo;
+    }
+
+    public void setSolo(boolean solo) {
+        this.solo = solo;
     }
 
     public String getSavegame() {

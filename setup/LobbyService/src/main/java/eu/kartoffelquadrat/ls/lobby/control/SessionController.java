@@ -119,29 +119,26 @@ public class SessionController {
         String creator = tokenController.nameFromToken(token);
         Session session;
 
-        // Standard case, just a new session. Create it, index it.
-        String savegameid = createGameForm.getSavegame();
-        if (savegameid.trim().isEmpty())
-            session = new Session(creator, gameParameters, savegameid);
-        else {
-            // Session is created from a savegame...
-            String gameservice = createGameForm.getGame();
-
-            try {
-                // Verify gameserver and savegame do exist
+        String savegameid = Objects.toString(createGameForm.getSavegame(), "");
+        String gameservice = createGameForm.getGame();
+        boolean solo = createGameForm.isSolo();
+        try {
+            if (!savegameid.trim().isEmpty()) {
                 savegameController.verifyIsRegisteredGameService(gameservice);
                 savegameController.verifyIsRegisteredSavegame(gameservice, savegameid);
-
-                // Actually look up savegame by id
                 Savegame savegame = gameServers.getSafegamesForGameServer(gameservice).getSavegame(savegameid);
-
-                // Create a new session, with parameter from savegame (player amount, game kind)
-                GameServerParameters brandedParams = gameParameters.getPlayerBrandedCopy(savegame.getPlayers().length);
-                session = new Session(creator, brandedParams, createGameForm.getSavegame());
-
-            } catch (SavegameException | SessionException se) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(se.getMessage());
+                solo = Arrays.asList(savegame.getPlayers()).contains(Session.PRACTICE_BOT);
+                gameParameters = gameParameters.getPlayerBrandedCopy(savegame.getPlayers().length);
             }
+            if (solo) {
+                if (!Session.supportsPractice(gameParameters) || Session.PRACTICE_BOT.equals(creator)) {
+                    return ResponseEntity.badRequest().body("This game cannot be played with a practice bot.");
+                }
+                gameParameters = gameParameters.getPlayerBrandedCopy(2);
+            }
+            session = new Session(creator, gameParameters, savegameid);
+        } catch (SavegameException | SessionException se) {
+            return ResponseEntity.badRequest().body(se.getMessage());
         }
 
         // In case the session runs in phantom/p2p mode, attach the provided creator location to the session
@@ -154,6 +151,9 @@ public class SessionController {
 
         // Register the newly created session, notify async clients about session update.
         setSessionDisplayName(session, creator);
+        if (solo) {
+            session.addPracticeBot();
+        }
         sessions.addSession(sessionId, session);
         sessionBroadcastManager.touch();
 
@@ -189,6 +189,9 @@ public class SessionController {
         String actor = tokenController.nameFromToken(token, sessionid);
         if (actor.isEmpty() || (!actor.equals(player) && !session.isMod(actor))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Only mods can copy another player's migrate link.");
+        }
+        if (player.equals(session.getBotPlayer())) {
+            return ResponseEntity.badRequest().body("The practice bot cannot migrate.");
         }
         if (!session.getPlayers().contains(player)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Player is not in this session.");
@@ -227,6 +230,9 @@ public class SessionController {
         if (actor.isEmpty() || (!actor.equals(player) && !session.isMod(actor))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Only mods can change another player observer status.");
         }
+        if (session.getBotPlayer() != null && session.getPlayers().contains(player)) {
+            return ResponseEntity.badRequest().body("Both practice seats must stay active.");
+        }
         session.setObserver(player, observer);
         sessionBroadcastManager.touch();
         sessionSpecificBroadcastManagers.get(sessionid).touch();
@@ -243,6 +249,9 @@ public class SessionController {
         String actor = tokenController.nameFromToken(token, sessionid);
         if (actor.isEmpty() || !session.isMod(actor)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Only mods can change mods.");
+        }
+        if (player.equals(session.getBotPlayer())) {
+            return ResponseEntity.badRequest().body("The practice bot cannot moderate.");
         }
         if (mod) {
             session.promoteMod(player);
@@ -439,6 +448,10 @@ public class SessionController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Session can not be left. Game has already " +
                     "been launched.");
 
+        if (player.equals(session.getBotPlayer())) {
+            return ResponseEntity.badRequest().body("The practice bot must stay in its seat.");
+        }
+
         // Looks good, remove the player form the session. Migrate links for them in this session stop working.
         session.removePlayer(player);
         roomTokenService.revoke(String.valueOf(sessionid), player);
@@ -514,9 +527,13 @@ public class SessionController {
 
         LinkedList<PlayerInfo> players = new LinkedList<>();
         for (String player : session.getActivePlayers()) {
-            players.add(new PlayerInfo(player, playerRepository.findById(player).get().getPreferredColour()));
+            String colour = player.equals(session.getBotPlayer())
+                    ? "64748B"
+                    : playerRepository.findById(player).get().getPreferredColour();
+            players.add(new PlayerInfo(player, colour));
         }
         LauncherInfo launcherInfo = new LauncherInfo(gamename, players, session.getCreator(), session.getSavegameid());
+        launcherInfo.setBotPlayer(session.getBotPlayer());
 	Unirest.config().verifySsl(false);
         Unirest.put(urlBuilder.toString()).header("Content-Type", "application/json; charset=utf-8")
                 .body(launcherInfo).asString();

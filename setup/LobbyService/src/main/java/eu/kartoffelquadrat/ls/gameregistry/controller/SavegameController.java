@@ -5,6 +5,7 @@ import eu.kartoffelquadrat.ls.accountmanager.model.PlayerRepository;
 import eu.kartoffelquadrat.ls.gameregistry.model.GameServerParameters;
 import eu.kartoffelquadrat.ls.gameregistry.model.GameServers;
 import eu.kartoffelquadrat.ls.lobby.control.SessionController;
+import eu.kartoffelquadrat.ls.lobby.model.Session;
 import eu.kartoffelquadrat.ls.lobby.model.Sessions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -122,17 +123,22 @@ public class SavegameController {
     }
 
     private void verifyUsersAndAmountSane(Savegame savegame) throws SavegameException, RegistryException {
-        // Verify the provided users exist
-        for (String player : savegame.getPlayers()) {
-            if (!playerRepository.existsById(player))
-                throw new SavegameException("Savegame can not be registered. Not all provided players are valid.");
-        }
-
-        // Verify the amount of players is legal for the registered game-type
         GameServerParameters parameter = gameServers.getGameServerParameters(savegame.getGamename());
         int playerAmount = savegame.getPlayers().length;
         if (playerAmount > parameter.getMaxSessionPlayers() || playerAmount < parameter.getMinSessionPlayers())
             throw new SavegameException("Savegame can not be registered. Amount of players is not allowed for the declared game.");
+
+        boolean hasBot = false;
+        for (String player : savegame.getPlayers()) {
+            if (Session.PRACTICE_BOT.equals(player)) {
+                if (hasBot || playerAmount != 2 || !Session.supportsPractice(parameter)) {
+                    throw new SavegameException("A practice save must have one human and one bot.");
+                }
+                hasBot = true;
+            } else if (!playerRepository.existsById(player)) {
+                throw new SavegameException("Savegame can not be registered. Not all provided players are valid.");
+            }
+        }
     }
 
     public void verifySavegameId(String savegameid, Savegame savegame) throws SavegameException {

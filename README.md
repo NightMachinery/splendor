@@ -17,6 +17,11 @@ in the lobby and use **Copy invite link** to bring guests to it. Once a second
 player joins, the host can select **Start game** and everyone can select
 **Play**. During a turn, use **View board** before returning to your action.
 Tap a card to read its details. Purchases suggest an exact payment you can edit.
+
+For a solo game, open **Create Session**, check **Play vs bot**, and choose a
+game version. Select **Start game**, then **Play** to face Practice Bot under
+the two-player rules.
+
 [Responsive layout and browser testing](docs/responsive-and-e2e.md)
 
 ## Getting Started

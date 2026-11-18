@@ -186,6 +186,13 @@ user.
   player's password is a BCrypt hash of their token, so the grant needs the
   token anyway. These tokens expire after 600 seconds and live in memory.
 
+### Practice bot
+
+Checking **Play vs bot** creates a two-seat room with the creator and a
+server-managed opponent. The lobby passes the reserved seat to the game server
+over the internal launch route. The seat has no account or migrate token.
+The game server's bot runner submits its moves directly to the game engine.
+
 ### History storage
 
 The board keeps the current game's observed turns and last visible state in

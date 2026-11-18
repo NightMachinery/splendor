@@ -13,7 +13,10 @@ import java.util.*;
  */
 public class Session implements BroadcastContent {
 
+    public static final String PRACTICE_BOT = "__splendor_practice_bot__";
+
     private final GameServerParameters gameParameters;
+    private String botPlayer;
     private final String creator;
     private final LinkedList<String> players;
     private boolean launched;
@@ -89,6 +92,21 @@ public class Session implements BroadcastContent {
             throw new SessionException("Player locator can not be added. The provided location is not a valid IP address.");
 
         playerLocations.put(player, location);
+    }
+
+    public static boolean supportsPractice(GameServerParameters parameters) {
+        return !parameters.isPhantom() && parameters.getName().startsWith("splendor_");
+    }
+
+    public void addPracticeBot() {
+        botPlayer = PRACTICE_BOT;
+        // Give the bot a display name before adding it to the roster so its alias is built once.
+        displayNames.put(botPlayer, "Practice Bot");
+        addPlayer(botPlayer);
+    }
+
+    public String getBotPlayer() {
+        return botPlayer;
     }
 
     public boolean isFull() {
