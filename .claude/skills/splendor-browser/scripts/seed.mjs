@@ -132,7 +132,8 @@ async function advance(api, data, opts) {
 async function main() {
     const args = parseSeedArgs(process.argv.slice(2));
     const allowRemote = !!args["allow-remote"];
-    if (args.seed !== undefined && !Number.isInteger(Number(args.seed))) die(`--seed must be a whole number, got ${args.seed}`);
+    const seed = Number(args.seed ?? 1);
+    if (String(args.seed ?? "1").trim() === "" || !Number.isSafeInteger(seed)) die(`--seed must be a whole number, got ${args.seed}`);
     const turns = args.advance === undefined ? 0 : Number(args.advance);
     if (String(args.advance ?? "0").trim() === "" || !Number.isInteger(turns) || turns < 0) die(`--advance must be a whole number, got ${args.advance}`);
     const toEnd = !!args["to-end"];
