@@ -109,7 +109,10 @@ export function pageProbe(opts = {}) {
         || (!navOpen && !!el.closest(".navigation"));
     const excluded = (/** @type {Element} */ el) => offStage(el) || !!el.closest(".other-player-container")
         || (!historyOpen && !!el.closest("#history"));
-    const shownModals = [...doc.querySelectorAll(".modal.show")].filter(vis);
+    // A native modal is in the top layer and makes everything behind it inert.
+    // Board-preview mode deliberately gives pointer access back to the board.
+    const nativeModal = doc.querySelector("dialog:modal");
+    const shownModals = nativeModal ? [nativeModal] : [...doc.querySelectorAll(".modal.show:not(.is-previewing)")].filter(vis);
 
     const all = [...body.querySelectorAll("*")];
     /** The nearest ancestor below body/html whose overflow on `axis` is not visible. @param {Element} el @param {"overflowX" | "overflowY"} axis */

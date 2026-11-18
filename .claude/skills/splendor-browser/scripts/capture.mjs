@@ -228,7 +228,7 @@ async function tap(page, selector, touch) {
     const box = await page.evaluate(`(() => {
         const el = document.querySelector(${JSON.stringify(selector)});
         if (!el) return null;
-        el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+        el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
         const r = el.getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     })()`);
