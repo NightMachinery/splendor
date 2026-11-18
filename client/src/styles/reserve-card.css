@@ -1,0 +1,102 @@
+.reserve-status,
+.reserve-gold {
+  color: var(--sp-text);
+  font: 400 var(--sp-fs-sm) / 1.4 var(--sp-font-ui);
+}
+
+.reserve-status {
+  margin-block: var(--sp-space-2);
+  text-align: center;
+}
+
+.reserve-status:empty {
+  display: none;
+}
+
+.reserve-gold {
+  box-sizing: border-box;
+  min-inline-size: 0;
+  inline-size: min(100%, 28rem);
+  padding: var(--sp-space-2);
+  border: 1px solid var(--sp-line);
+  border-radius: var(--sp-r-2);
+}
+
+.reserve-gold legend {
+  padding-inline: var(--sp-space-1);
+  font-weight: 600;
+}
+
+.reserve-gold-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4.65rem, 1fr));
+  gap: var(--sp-space-1);
+}
+
+.reserve-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-space-2);
+}
+
+.reserve-buttons {
+  margin-block-start: var(--sp-space-3);
+}
+
+.reserve-gold-choice {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-space-1);
+  min-block-size: var(--sp-tap);
+  padding-inline: var(--sp-space-2);
+  border: 1px solid var(--sp-line);
+  border-radius: var(--sp-r-2);
+  background: var(--sp-surface-2);
+  cursor: pointer;
+}
+
+.reserve-gold-choice:has(input[value="Gold"]) {
+  grid-column: 1 / -1;
+}
+
+.reserve-gold-choice::before {
+  content: "";
+  box-sizing: border-box;
+  inline-size: 1em;
+  block-size: 1em;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.reserve-gold-choice:has(input:checked) {
+  border-color: var(--sp-gold);
+}
+
+.reserve-gold-choice:has(input:checked)::before {
+  border-color: var(--sp-gold);
+  background: var(--sp-gold);
+}
+
+.reserve-gold-choice:has(input:focus-visible) {
+  outline: 2px solid var(--sp-focus);
+  outline-offset: 2px;
+}
+
+.reserve-gold-choice input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.reserve-gold:disabled .reserve-gold-choice {
+  opacity: 0.5;
+  cursor: default;
+}

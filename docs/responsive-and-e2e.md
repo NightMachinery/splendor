@@ -13,6 +13,9 @@ Purchase confirmation starts with an exact payment when one is available.
 Adjust the gem and gold counters to choose a different payment, or reset to
 the suggestion. The purchase summary shows when payment will discard a
 double-gold or bonus card.
+When reserving at the ten-token limit, choose a gem to return to take the
+available gold, or leave the gold in the bank. The reserve dialog says when
+the bank is out of gold and the card can still be reserved.
 
 The entry pages use the device's viewport. In the lobby, **Create Session**
 opens a tap and keyboard accessible game picker. A new session is ready to

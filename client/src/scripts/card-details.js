@@ -1,5 +1,5 @@
 import { cardById, cardTags, isGem, isOrientCard, locateCard, resolvePlayer, tierOf } from "./sp/rules-common.js";
-import { costRows } from "./sp/rules-pay.js";
+import { costRows, reserveOutcome, reserveReturnOptions } from "./sp/rules-pay.js";
 
 let state;
 let player;
@@ -8,6 +8,12 @@ export function purchaseContext(cardId) {
     const match = locateCard(state, cardId);
     const available = match?.where === "market" || (match?.where === "reserved" && match.owner === player?.name);
     return { card: available ? match.card : null, player };
+}
+
+export function reservationContext(cardId) {
+    const outcome = reserveOutcome(state, player, cardId);
+    const returns = outcome.ok && outcome.gold === "needs-return" ? reserveReturnOptions(player) : [];
+    return { outcome, returns };
 }
 
 const describeRewards = (card) => {

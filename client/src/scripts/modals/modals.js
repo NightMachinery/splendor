@@ -35,7 +35,7 @@ export const setupSelection = (selector, selectedSelector, onSelection) => {
     });
 };
 
-export function setupDevelopmentCardSelection(modalSelector, cardSelector) {
+export function setupDevelopmentCardSelection(modalSelector, cardSelector, onSelection) {
     const modal = document.querySelector(modalSelector);
     const selector = `${modalSelector} ${cardSelector}[card-id]`;
     showCardReadout(modal, null);
@@ -51,6 +51,7 @@ export function setupDevelopmentCardSelection(modalSelector, cardSelector) {
         previous?.setAttribute("aria-pressed", "false");
         selected?.setAttribute("aria-pressed", "true");
         showCardReadout(modal, selected?.getAttribute("card-id"));
+        onSelection?.();
     });
 }
 

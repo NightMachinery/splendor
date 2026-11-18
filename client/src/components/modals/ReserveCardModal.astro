@@ -1,19 +1,24 @@
 ---
 import "../../styles/modals.css";
 import "../../styles/gameboard.css";
+import "../../styles/reserve-card.css";
 import ModalLayout from "../../layouts/ModalLayout.astro";
 ---
 
 <ModalLayout id="reserve-card-modal">
     <h1>RESERVE</h1>
-    <p>Please select the card you wish to reserve.</p>
 
     <div id="reserve-card-board" class="reserve-card-board">
         <div class="modal-board-cards"></div>
     </div>
     <div class="card-readout" data-card-readout="reserve" aria-live="polite"></div>
-    <div class="button-container">
-        <button class="reserve-card-back-btn" id="reserve-card-back-btn">BACK</button>
-        <button class="reserve-card-confirm-btn" id="reserve-card-confirm-btn">CONFIRM</button>
+    <div class="reserve-status" role="status"></div>
+    <fieldset class="reserve-gold" hidden>
+        <legend>At ten tokens, return one to take gold</legend>
+        <div class="reserve-gold-choices"></div>
+    </fieldset>
+    <div class="reserve-buttons">
+        <button type="button" class="sp-btn sp-btn-secondary" id="reserve-card-back-btn">Back</button>
+        <button type="button" class="sp-btn sp-btn-primary" id="reserve-card-confirm-btn" disabled>Reserve card</button>
     </div>
 </ModalLayout>
