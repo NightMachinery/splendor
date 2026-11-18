@@ -1,4 +1,4 @@
-import { SETTINGS, createLongPoll, fetchWithTimeout } from "./settings.js";
+import { SETTINGS, createLongPoll, fetchWithTimeout, LS_HOLDS_REQUESTS } from "./settings.js";
 import { startTurn, verifyNoModals, performFollowUpAction, showNextModal } from "./modals/modals.js";
 import { animateMoveToken } from "./animation/tokens";
 import { moveCardFromDeck, moveCard, moveCardReserved } from "./animation/cards";
@@ -498,12 +498,16 @@ const showPollErrorOnce = (message) => {
 };
 
 /**
- * Lobby Service long-poll on this session, for aliases, observers and
+ * Lobby Service poll on this session, for aliases, observers and
  * moderators. The LS deletes the session when the game ends; then it stops.
+ * It does not let the LS hold requests (see LS_HOLDS_REQUESTS) and checks
+ * every 10 s instead; this board's own moderation actions refresh at once.
  */
 const lobbySessionPoll = createLongPoll({
     name: "board-lobby-session",
     indicator: false,
+    hold: LS_HOLDS_REQUESTS,
+    intervalMs: 10000,
     // badges and aliases can wait until the tab is visible again
     pauseWhenHidden: true,
     url: (hash) => {

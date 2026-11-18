@@ -514,8 +514,33 @@ export const boardPathForVersion = (version) => {
  *   loop sends an immediate fresh request on visibilitychange (visible) and
  *   online;
  * - a shared "Reconnecting..." indicator instead of error toasts for
- *   connection problems.
+ *   connection problems;
+ * - optionally (hold: false) plain periodic GETs instead of held requests,
+ *   used for the LS for now (see LS_HOLDS_REQUESTS).
  * ------------------------------------------------------------------------ */
+
+/**
+ * Whether the client lets the Lobby Service hold its long-polls.
+ *
+ * false for now: the LS's long-poll library (asyncrestlib 1.5.1, see
+ * SessionController.getHashBasedUpdate) starts a thread per held request
+ * that waits on a latch with no timeout. A 408 timeout or a client abort
+ * does not end it; only a change of the watched content does. An idle
+ * lobby tab or board leaked about 120 such threads an hour (about 280 KB
+ * each), and those of a launched session that is abandoned are never
+ * freed. The same library also loses a wakeup when the content changes
+ * between its hash check and the start of the wait, delaying that update
+ * by the full 30 s.
+ *
+ * So the LS loops send a hash that never matches (the LS answers at once,
+ * no thread is started) every few seconds and compare the MD5 locally.
+ * Set this to true once the LS ends every held wait with its request (a
+ * timed wait, or completing the DeferredResult from touch()) and takes its
+ * latch before the hash comparison. Then the lobby and the board's LS
+ * session loop long-poll like the GS loop. See
+ * docs/client-architecture.md, "Why the LS loops do not hold requests".
+ */
+export const LS_HOLDS_REQUESTS = false;
 
 const MIN_CYCLE_MS = 750;
 const MAX_BACKOFF_MS = 30000;
@@ -635,6 +660,11 @@ export class PollError extends Error {
  *   "non-json", "auth", "client" or "render".
  * @param {boolean} [options.indicator=true] whether connection failures of
  *   this loop show the "Reconnecting..." indicator
+ * @param {boolean} [options.hold=true] let the server hold requests (send the
+ *   stored hash). false: send "-", which never matches, so the server answers
+ *   at once; poll every intervalMs and render only when the MD5 changed.
+ * @param {number} [options.intervalMs=5000] with hold: false, the time from
+ *   the start of one request to the start of the next
  * @param {boolean} [options.pauseWhenHidden=false] send no new request while
  *   the tab is hidden (resumed on visibilitychange). Leave it off for state a
  *   background tab must still notice, such as the board's game state, so that
@@ -643,7 +673,7 @@ export class PollError extends Error {
 export const createLongPoll = (options) => {
     const {
         name, url, onUpdate, beforeRequest = null, onGone = null, onError = null, indicator = true,
-        pauseWhenHidden = false,
+        pauseWhenHidden = false, hold = true, intervalMs = 5000,
     } = options;
     let hash = "-";
     let started = false;
@@ -656,6 +686,10 @@ export const createLongPoll = (options) => {
     let sameHashStreak = 0;
 
     const minCycle = (startedAt) => Math.max(0, MIN_CYCLE_MS - (Date.now() - startedAt));
+    // delay after a successful cycle: at once for held requests, else the interval
+    const nextCycle = (startedAt) => (hold
+        ? minCycle(startedAt)
+        : Math.max(minCycle(startedAt), intervalMs - (Date.now() - startedAt)));
 
     const recovered = () => {
         errorStreak = 0;
@@ -694,7 +728,7 @@ export const createLongPoll = (options) => {
             }
         }
 
-        const sentHash = hash;
+        const sentHash = hold ? hash : "-";
         const req = { controller: new AbortController(), woken: false };
         request = req;
         const abortTimer = setTimeout(() => req.controller.abort(), REQUEST_TIMEOUT_MS);
@@ -715,7 +749,7 @@ export const createLongPoll = (options) => {
             // the server held the request and nothing changed
             recovered();
             sameHashStreak = 0;
-            return minCycle(startedAt);
+            return nextCycle(startedAt);
         }
         if(resp.status === 401 || resp.status === 403) {
             SETTINGS.invalidateCredentials();
@@ -741,6 +775,10 @@ export const createLongPoll = (options) => {
         recovered();
 
         const newHash = md5Hex(text);
+        if(!hold && newHash === hash) {
+            // periodic poll: nothing changed since the last render
+            return nextCycle(startedAt);
+        }
         if(newHash === sentHash) {
             // The server should have held this request. Do not spin.
             sameHashStreak++;
@@ -755,7 +793,7 @@ export const createLongPoll = (options) => {
             return failed("render", err);
         }
         hash = newHash; // only after a successful render
-        return minCycle(startedAt);
+        return nextCycle(startedAt);
     };
 
     const schedule = (delay) => {

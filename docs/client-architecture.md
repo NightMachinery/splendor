@@ -46,7 +46,7 @@ The login page passes the typed name as `verifyCredentials({allowCreate: true, d
 Both servers implement the same idea. A GET carries `hash=<x>`. If `x` equals the MD5 of the exact JSON string the server would send, the server holds the request until the content changes or a 30 s timeout expires; otherwise it answers at once with the JSON.
 
 - GS, `GET /gs/api/sessions/<id>?hash=` (simpoll `ResultGenerator.getStringResult`). It compares against `DigestUtils.md5Hex(json)`, where `json` is the Gson string it returns. On timeout it answers 204 ("No update."). An unknown session gives 400. A completed watcher would give 410; the controller never completes one today. Each request waits through its own watcher from `GameStateWatcher.forOnePoll()`, which takes the change latch before the hash comparison. simpoll's own `ContentWatcher` waits on the latch that is current when its waiting thread starts, so a move that landed between the comparison and that moment went unseen until the 30 s timeout (the rendered e2e games caught a board stuck this way).
-- LS, `GET /ls/api/sessions?hash=` and `GET /ls/api/sessions/<id>?hash=` (asyncrestlib `ResponseGenerator.getHashBasedUpdate`). It compares against `md5Hex(new Gson().toJson(content))`, which is also the body it sends. On timeout it answers 408. An unknown session gives 400. A request that is waiting when its session is deleted (the GS deletes it at game over) gets 406 Not Acceptable: asyncrestlib 1.5.1 hands Spring the unbuilt `ResponseEntity.noContent()` builder, which has no JSON form. The board's LS poll treats that as a server error, retries after a backoff, gets the 400 and stops.
+- LS, `GET /ls/api/sessions?hash=` and `GET /ls/api/sessions/<id>?hash=` (asyncrestlib `ResponseGenerator.getHashBasedUpdate`). It compares against `md5Hex(new Gson().toJson(content))`, which is also the body it sends. On timeout it answers 408. An unknown session gives 400. A request that is waiting when its session is deleted (the GS deletes it at game over) gets 406 Not Acceptable: asyncrestlib 1.5.1 hands Spring the unbuilt `ResponseEntity.noContent()` builder, which has no JSON form. (The client does not let the LS hold requests at the moment, so it does not see this reply; see "Why the LS loops do not hold requests".)
 
 Both endpoints declare `application/json; charset=utf-8`, and `md5Hex(String)` hashes the UTF-8 bytes. So MD5 over the UTF-8 encoding of `await response.text()` reproduces the server's hash exactly, including names in Persian or other non-Latin scripts.
 
@@ -54,17 +54,30 @@ Both endpoints declare `application/json; charset=utf-8`, and `md5Hex(String)` h
 
 Until this fix the client sent a SHA-256 hash (or a 32-bit string hash over http), so no request was ever held and every open board and lobby polled in a tight loop.
 
+### Why the LS loops do not hold requests
+
+Once the client sent the right MD5, the LS really held requests, and that exposed two defects in asyncrestlib 1.5.1, the long-poll library behind `getHashBasedUpdate`. Both were measured by the review of this change on an isolated instance.
+
+- Thread leak. Each held request starts an `AsyncNotifyThread` that waits on the content latch with no timeout. A 408 timeout does not end it, and neither does a client abort; only a change of the watched content does. An idle lobby tab or board renewed its hold every 30 s and so leaked about 120 threads an hour, at roughly 280 KB of RSS each. The board's threads sit on the session's own broadcast manager, which changes rarely during a game, and those of a launched session that is abandoned are never freed. After 500 aborted holds the LS had grown from 734 to 1234 OS threads and from 76 MB to 218 MB of RSS. macOS caps a process at 6144 threads.
+- Lost wakeup. The hash is compared on the request thread and the waiting thread reads the latch later. A change between the two is missed, and that update arrives only after the 30 s timeout. The GS had the same race and fixed it in `GameStateWatcher`; the LS has not.
+
+Until the LS is fixed, the two LS loops run with `hold: false`, chosen by `LS_HOLDS_REQUESTS = false` in `settings.js`. They send `hash=-`, which never matches, so the LS answers at once and starts no thread. The loop compares the MD5 of each reply with the last rendered one and renders only a change. The lobby polls every 3 s and the board's LS session loop every 10 s, and both pause in hidden tabs. The lobby's own create, join, leave, delete, launch and moderation actions call `wake()`, so their result shows at once; the board's moderation actions already re-fetch the session. Other people's changes show within the interval instead of instantly.
+
+The fix belongs in the LS: complete each held `DeferredResult` from the broadcast manager's `touch()` (or wait with a timeout) so that no thread outlives its request, and take the latch, or register the waiter, before comparing the hash. When that lands, set `LS_HOLDS_REQUESTS` to true (and update the unit test that pins it) and the LS loops long-poll like the GS loop.
+
 ### The poll loop
 
-`createLongPoll(options)` in `settings.js` runs one loop. The options are `name`, `url(hash)`, `onUpdate(data, text, hash)` and, optionally, `beforeRequest()`, `onGone(status, text)`, `onError(err, info)`, `indicator` and `pauseWhenHidden`. One cycle:
+`createLongPoll(options)` in `settings.js` runs one loop. The options are `name`, `url(hash)`, `onUpdate(data, text, hash)` and, optionally, `beforeRequest()`, `onGone(status, text)`, `onError(err, info)`, `indicator`, `pauseWhenHidden`, `hold` and `intervalMs`. One cycle:
 
 1. If the loop has `pauseWhenHidden` and the tab is hidden, stop here and wait (see below).
 2. Run `beforeRequest()`. The pages use it for the cached identity check. An `AuthRejectedError` stops the loop, because the login page is being shown. Any other error counts as a failure.
-3. Send the GET with the last rendered hash (`-` at first, which never matches). The request is aborted after 50 s, longer than any server hold.
+3. Send the GET with the last rendered hash (`-` at first, which never matches). A loop with `hold: false` always sends `-`, so the server answers at once. The request is aborted after 50 s, longer than any server hold.
 4. Handle the reply:
    - 204 or 408 means "nothing changed": poll again at once.
    - 200 with JSON whose MD5 differs from the sent hash: call `onUpdate`. The stored hash changes only after `onUpdate` returns, so a render that throws is retried with the same state (with backoff), instead of leaving a half-drawn board until the next change.
    - 200 whose MD5 equals the sent hash: the server should have held the request. This is treated as a misbehaving server and backed off.
+   - With `hold: false`, a 200 whose MD5 equals the last rendered hash means nothing changed.
+   - After any successful reply a holding loop polls again at once, and a loop with `hold: false` waits until `intervalMs` (default 5 s) has passed since the request started.
    - 401 or 403: drop the identity cache and back off.
    - 400, 404 or 410: if `onGone` returns true, stop for good (used when the LS deletes a finished session); otherwise back off.
    - 5xx, a non-JSON body, or a network error: back off.
@@ -78,15 +91,15 @@ Timing rules:
 
 Connection problems (network errors, 5xx, non-JSON replies, transient identity failures) do not toast. Instead a shared element `#splendor-connection-indicator` (class `connection-indicator`, `role="status"`) shows "Reconnecting..." in the bottom right corner, styled inline for now so a later UX pass can restyle it. It disappears as soon as every loop has a successful reply again. Errors a user can act on still toast once per distinct message: on the board, a 400 from the GS (the game no longer exists, for example after a GS restart) and a render failure.
 
-Steady-state load: each loop keeps one request open and renews it every 30 s, plus one request per real change. An idle lobby or board sends about two requests a minute per loop instead of hundreds per second.
+Steady-state load: a holding loop (the board's GS loop) keeps one request open and renews it every 30 s, plus one request per real change, so about two requests a minute. The periodic LS loops send 20 requests a minute (lobby) and 6 (board), each answered at once, and none while the tab is hidden. Before the MD5 fix every loop sent hundreds per second.
 
 ### Loops per page
 
-- Lobby: one loop on `GET /ls/api/sessions?hash=`. Its `onUpdate` re-renders the session table. The lobby's create, join, leave, delete and launch requests show an error toast on failure (including an unreachable server), and a 401 drops the identity cache so the next action re-verifies. The avatar and role (`getUserDetail`) retry with the same backoff while the server is unreachable, without toasts.
+- Lobby: one loop on `GET /ls/api/sessions?hash=-`, every 3 s while the tab is visible (see "Why the LS loops do not hold requests"). Its `onUpdate` re-renders the session table, and the page's own actions wake it. The lobby's create, join, leave, delete and launch requests show an error toast on failure (including an unreachable server), and a 401 drops the identity cache so the next action re-verifies. The avatar and role (`getUserDetail`) retry with the same backoff while the server is unreachable, without toasts.
 - Lobby, "Load a Game" tab (`lobby-saves.js`): not a poll. Each click lists the saves of every version in `GAME_VERSION_TO_BOARD` from the LS, joins them with the GS details from `GET /gs/api/saves` (name, creator, timestamp), and shows only saves both services know. A save the GS lacks used to crash the timestamp sort and empty the list; an unreachable GS now just gives no rows instead of a raw `TypeError` toast.
 - Board: two loops.
   - The game-state loop (`board`) on `GET /gs/api/sessions/<id>?hash=`. Its first cycle verifies the identity and fetches the lobby session once, so player aliases are known before the first render. It keeps polling in a hidden tab. anime.js suspends while the page is hidden, so an animation started then would play, and reveal its card or token count, only after the tab is shown, possibly out of order with later ones. A render in a hidden tab therefore skips the card and token animations and shows the end state at once. Each token count span also keeps the latest count in `data-count`, so an animation from an earlier render that finishes late cannot put back an older number.
-  - The lobby-session loop (`board-lobby-session`) on `GET /ls/api/sessions/<id>?hash=`. It refreshes aliases, observer and moderator badges and the moderation buttons the moment they change, independently of game moves. It does not drive the indicator, and it stops when the LS answers 400, which happens once the game is over and the GS has deleted the LS session.
+  - The lobby-session loop (`board-lobby-session`) on `GET /ls/api/sessions/<id>?hash=-`, every 10 s while the tab is visible. It refreshes aliases, observer and moderator badges and the moderation buttons when they change, independently of game moves. Its hash is seeded from the session fetched before the first render, so an unchanged session is not drawn twice. It does not drive the indicator, and it stops when the LS answers 400, which happens once the game is over and the GS has deleted the LS session.
 
 ## Game versions
 

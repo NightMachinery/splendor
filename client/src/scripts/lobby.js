@@ -1,4 +1,4 @@
-import { SETTINGS, boardPathForVersion, createLongPoll, backoffDelay } from "./settings.js";
+import { SETTINGS, boardPathForVersion, createLongPoll, backoffDelay, LS_HOLDS_REQUESTS } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
 import { showError } from "./notify.js";
@@ -7,6 +7,17 @@ import {
     playerAlias, isObserver, isMod,
     renderPlayerBadges, renderModerationActions
 } from "./moderation-ui.js";
+
+// The session-list poll, created on DOMContentLoaded.
+let sessionsPoll = null;
+
+/**
+ * Fetch the session list now instead of at the next poll, after this
+ * page changed it (create, join, leave, launch, delete, moderation).
+ */
+const refreshSessionList = () => {
+    if(sessionsPoll) sessionsPoll.wake();
+};
 
 /**
  * Creates a new session with the specified game version and save id.
@@ -38,6 +49,7 @@ export const createNewSession = async (gameVersion, saveId="") => {
         throw new Error(respText || `Could not create the session (${resp.status}).`);
     }
 
+    refreshSessionList();
     return respText;
 };
 
@@ -71,7 +83,10 @@ const runSessionRequest = (elm, method, path, label) => {
         }
     }).catch((err) => {
         if(!(err && err.authRejected)) showError(actionErrorText(label, err));
-    }).finally(() => elm.disabled = false);
+    }).finally(() => {
+        elm.disabled = false;
+        refreshSessionList();
+    });
 };
 
 const changeTab = (selectedElm, otherElm) => {
@@ -279,7 +294,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const actions = document.createElement("div");
             actions.className = "session-player-actions";
             renderModerationActions(actions, ses, sessionId, player, {
-                buildMigrateLink: (migrate) => `${window.location.origin}${boardPathForVersion(version)}?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`
+                buildMigrateLink: (migrate) => `${window.location.origin}${boardPathForVersion(version)}?sessionId=${sessionId}&migrate=${encodeURIComponent(migrate)}`,
+                afterAction: refreshSessionList,
             });
             item.appendChild(actions);
             list.appendChild(item);
@@ -431,9 +447,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     }
 
-    // Long-poll the list of sessions (see createLongPoll in settings.js).
-    const sessionsPoll = createLongPoll({
+    // Poll the list of sessions (see createLongPoll in settings.js). It does
+    // not let the LS hold requests (see LS_HOLDS_REQUESTS) and checks every
+    // 3 s instead; this page's own actions refresh it at once.
+    sessionsPoll = createLongPoll({
         name: "lobby",
+        hold: LS_HOLDS_REQUESTS,
+        intervalMs: 3000,
         // a hidden lobby catches up on visibilitychange
         pauseWhenHidden: true,
         url: (hash) => {

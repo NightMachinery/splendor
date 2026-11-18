@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { installFakeBrowser, flush } from "./client-fake-browser.mjs";
 
 const browser = installFakeBrowser("http://splendor.test/gameboard/?sessionId=7");
-const { createLongPoll, backoffDelay, AuthRejectedError } = await import("../../src/scripts/settings.js");
+const { createLongPoll, backoffDelay, AuthRejectedError, LS_HOLDS_REQUESTS } = await import("../../src/scripts/settings.js");
 const { md5Hex } = await import("../../src/scripts/local-md5.js");
 
 let pollCounter = 0;
@@ -241,4 +241,42 @@ test("a transient beforeRequest failure backs off and shows the indicator", asyn
     await advance(t, 5000);
     assert.equal(rendered.length, 1);
     assert.equal(document.body.dataset.splendorConnection, "ok");
+});
+
+test("hold: false polls every intervalMs with a hash that never matches, and renders only changes", async (t) => {
+    enableTimers(t);
+    let n = 1;
+    browser.fetch.handler = () => ({ status: 200, body: state(n) });
+    const { poll, sent, rendered } = makePoll({ hold: false, intervalMs: 3000 });
+    poll.start();
+    await advance(t, 9500);
+    assert.equal(browser.fetch.calls.length, 4, "at 0, 3, 6 and 9 s");
+    assert.ok(sent.every(h => h === "-"), "never sends a hash the server could hold on");
+    assert.equal(rendered.length, 1, "an unchanged body is not rendered again");
+    n = 2;
+    await advance(t, 3000);
+    assert.equal(rendered.length, 2);
+    assert.equal(poll.getHash(), md5Hex(state(2)));
+    assert.equal(document.body.dataset.splendorConnection, "ok");
+});
+
+test("hold: false skips the rest of the interval on wake(), and a seeded hash avoids a first re-render", async (t) => {
+    enableTimers(t);
+    browser.fetch.handler = () => ({ status: 200, body: state(5) });
+    const { poll, rendered } = makePoll({ hold: false, intervalMs: 10000 });
+    poll.setHash(md5Hex(state(5)));
+    poll.start();
+    await advance(t, 1000);
+    assert.equal(browser.fetch.calls.length, 1);
+    assert.equal(rendered.length, 0, "the state fetched before start() is not rendered twice");
+    browser.fetch.handler = () => ({ status: 200, body: state(6) });
+    poll.wake();
+    await flush();
+    assert.equal(browser.fetch.calls.length, 2);
+    assert.equal(rendered.length, 1);
+});
+
+test("the LS loops do not let the Lobby Service hold requests until its thread leak is fixed", () => {
+    // See LS_HOLDS_REQUESTS in settings.js before changing this.
+    assert.equal(LS_HOLDS_REQUESTS, false);
 });
