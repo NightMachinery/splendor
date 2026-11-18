@@ -1,10 +1,10 @@
 import { showNextModal, setupDevelopmentCardSelection, backButton } from "./modals.js";
-import { showCardReadout } from "../card-details.js";
+import { openPurchasePayment } from "./purchase-payment.js";
 import { performAction } from "../actions";
 import { showError } from "../notify.js";
 
 /**
- * Get the list of tokens when taking / putting back tokens or purchasing a development card
+ * Read the chosen tokens when taking or returning tokens.
  * @returns [{ token: count }]
  */
 const getTokensList = (selector) => {
@@ -108,7 +108,7 @@ purchaseBtn.onclick = () => {
     showPurchasableDevCards();
     showNextModal("#buy-card-modal");
 };
-document.querySelectorAll(".buy-card-back-btn").forEach(elm => elm.onclick = backButton);
+document.querySelectorAll(".buy-card-back-btn, #purchase-confirm-back-btn").forEach(elm => elm.onclick = backButton);
 
 const showPurchasableDevCards = () => {
     // show reserved cards (from player inv, maybe should pass in data from server instead?)
@@ -153,56 +153,10 @@ const showPurchasableDevCards = () => {
             return;
         }
 
-        showPayment(selectedCard);
+        openPurchasePayment(selectedCard.getAttribute("card-id"));
         showNextModal("#dev-card-payment-modal");
     };
 };
-
-const showPayment = (cardNode) => {
-
-    const confirmBtn = document.querySelector("#dev-card-payment-modal .buy-card-confirm-btn");
-
-    // to be used to restrict selection of tokens in the FUTURE
-    // const cost = JSON.parse(cardNode.getAttribute("cost"));
-    const cardId = cardNode.getAttribute("card-id");
-
-    // show card in purchase window
-    const imgSrc = `/images/development-cards/${cardId}.jpg`;
-    document.querySelector("#dev-card-payment-modal .purchase-show-card img").setAttribute("src", imgSrc);
-    showCardReadout(document.getElementById("dev-card-payment-modal"), cardId);
-
-    // clear previous numbers
-    document.querySelectorAll("#dev-card-payment-modal board-token").forEach(elm => {
-        elm.setCount(0);
-    });
-
-    // set min and max for counters, TODO: set max and min values to what tokens the player has
-    document.querySelectorAll("#dev-card-payment-modal board-token-counter").forEach(elm => {
-        elm.setMax(10);
-    });
-
-    confirmBtn.onclick = () => {
-        confirmBtn.disabled = true;
-
-        const dataCallback = () => {
-            return {
-                "cardId": cardId,
-                "tokens": getTokensList("#dev-card-payment-modal board-token-counter board-token .board-token")
-            };
-        };
-
-        performAction("BUY_CARD", dataCallback)
-            .then((resp) => {
-                if(resp.error) {
-                    showError(resp.message);
-                }
-            }).catch((err) => {
-                showError(err.toString());
-            }).finally(() =>  confirmBtn.disabled = false);
-    };
-
-};
-
 
 // -----------------------------------------------------------------------------------------
 // Set up reserving cards

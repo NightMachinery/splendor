@@ -4,6 +4,12 @@ import { costRows } from "./sp/rules-pay.js";
 let state;
 let player;
 
+export function purchaseContext(cardId) {
+    const match = locateCard(state, cardId);
+    const available = match?.where === "market" || (match?.where === "reserved" && match.owner === player?.name);
+    return { card: available ? match.card : null, player };
+}
+
 const describeRewards = (card) => {
     const points = card.prestigePoints ?? 0;
     const bonus = card.bonus ?? 0;

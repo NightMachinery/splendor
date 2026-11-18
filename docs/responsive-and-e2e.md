@@ -9,6 +9,10 @@ Tap a face-up development card or one of your reserved cards to inspect
 its art, costs, bonuses and effects. Purchase, reserve and cascade choices
 show the selected card's details before confirmation. Purchase details show
 what remains after your gem bonuses when they reduce the printed cost.
+Purchase confirmation starts with an exact payment when one is available.
+Adjust the gem and gold counters to choose a different payment, or reset to
+the suggestion. The purchase summary shows when payment will discard a
+double-gold or bonus card.
 
 The entry pages use the device's viewport. In the lobby, **Create Session**
 opens a tap and keyboard accessible game picker. A new session is ready to

@@ -1,6 +1,7 @@
 ---
 import "../../styles/modals.css";
 import "../../styles/gameboard.css";
+import "../../styles/purchase-payment.css";
 import ModalLayout from "../../layouts/ModalLayout.astro";
 ---
 
@@ -22,14 +23,13 @@ import ModalLayout from "../../layouts/ModalLayout.astro";
 
 <ModalLayout id="dev-card-payment-modal">
     <h1>CONFIRM PURCHASE</h1>
-    <p>Select the number of tokens you wish to purchase the card with.</p>
     <!-- Selected Card Here -->
     <div class="purchase-show-card board-card-dev">
         <img>
     </div>
     <div class="card-readout" data-card-readout="payment"></div>
 
-    <div class="token-count-outer-container">
+    <fieldset class="token-count-outer-container payment-counters" aria-label="Tokens to spend">
 
         <!-- Red Counter -->
         <board-token-counter color="red"></board-token-counter>
@@ -48,10 +48,16 @@ import ModalLayout from "../../layouts/ModalLayout.astro";
 
         <!-- Gold Counter -->
         <board-token-counter color="gold"></board-token-counter>
+    </fieldset>
+
+    <div class="payment-summary" role="status">
+        <div data-payment-summary></div>
+        <strong data-payment-discard hidden></strong>
     </div>
 
-    <div class="button-container">
-        <button class="buy-card-back-btn" id="purchase-confirm-back-btn"> BACK</button>
-        <button class="buy-card-confirm-btn" id="purchase-confirm-btn">CONFIRM</button>
+    <div class="payment-buttons">
+        <button type="button" class="sp-btn sp-btn-secondary" id="purchase-confirm-back-btn">Back</button>
+        <button type="button" class="sp-btn sp-btn-secondary" data-reset-payment>Reset to suggestion</button>
+        <button type="button" class="sp-btn sp-btn-primary" id="purchase-confirm-btn">Buy card</button>
     </div>
 </ModalLayout>

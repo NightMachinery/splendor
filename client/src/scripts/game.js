@@ -7,6 +7,7 @@ import { runDelayed } from "./animation/utils";
 import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
 import { setCardDetailsState, setCardInspectTarget } from "./card-details.js";
+import { refreshPurchasePayment } from "./modals/purchase-payment.js";
 
 import { md5Hex } from "./local-md5.js";
 import {
@@ -482,6 +483,7 @@ const renderGameState = (data, hash) => {
     } else {
         verifyNoModals();
     }
+    refreshPurchasePayment();
 
     renderedState = data;
     setBoardTestHooks(data, hash);

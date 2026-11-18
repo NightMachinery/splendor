@@ -1,0 +1,80 @@
+#dev-card-payment-modal {
+  --payment-width: 27rem;
+}
+
+#dev-card-payment-modal .modal-content {
+  gap: var(--sp-space-2);
+}
+
+#dev-card-payment-modal .modal-content h1 {
+  font-size: clamp(1.65rem, 6vw, 2.9rem);
+}
+
+#dev-card-payment-modal .payment-counters {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(8.25rem, 100%), 1fr));
+  gap: var(--sp-space-1);
+  width: min(100%, var(--payment-width));
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.payment-counters .token-count-inner-container {
+  flex-direction: row;
+  gap: var(--sp-space-1);
+  padding: 0;
+  font-size: var(--sp-fs-md);
+}
+
+.payment-counters .quantity-button {
+  box-sizing: border-box;
+  width: var(--sp-tap);
+  height: var(--sp-tap);
+  flex: none;
+  border-radius: var(--sp-r-2);
+  border-color: var(--sp-line);
+  background: var(--sp-surface-2);
+  color: var(--sp-text);
+}
+
+.payment-counters .quantity-button span {
+  font: 600 var(--sp-fs-lg) / 1 var(--sp-font-ui);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.payment-counters .decrease {
+  order: -1;
+}
+
+.payment-counters .increase {
+  order: 1;
+}
+
+.payment-summary {
+  display: grid;
+  gap: var(--sp-space-1);
+  width: min(100%, var(--payment-width));
+  color: var(--sp-text);
+  font: 400 var(--sp-fs-sm) / 1.35 var(--sp-font-ui);
+  text-align: center;
+}
+
+.payment-summary strong {
+  color: var(--sp-gold);
+}
+
+.payment-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-space-2);
+}
+
+#dev-card-payment-modal .payment-counters[hidden],
+.payment-buttons .sp-btn[hidden] {
+  display: none;
+}

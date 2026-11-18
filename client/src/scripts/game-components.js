@@ -65,13 +65,13 @@ class TokenCounter extends HTMLElement {
 
         this.innerHTML = `
             <div class="token-count-inner-container">
-                <div class="quantity-button increase">
+                <button class="quantity-button increase" type="button" aria-label="Add ${this.color}">
                     <span>+</span>
-                </div>
+                </button>
                 <board-token color="${this.color}"></board-token>
-                <div class="quantity-button decrease">
+                <button class="quantity-button decrease" type="button" aria-label="Remove ${this.color}">
                     <span>-</span>
-                </div>
+                </button>
             </div>
         `;
 
@@ -81,39 +81,32 @@ class TokenCounter extends HTMLElement {
         this.querySelector(".increase").onclick = () => {
             /** @type {Token} */
             if (countElm.count < this.max) {
-                countElm.setCount(countElm.count + 1);
-                this.checkVisibility();
+                this.setCount(countElm.count + 1);
             }
         };
     
         this.querySelector(".decrease").onclick = () => {
             /** @type {Token} */
             if (countElm.count > this.min) {
-                countElm.setCount(countElm.count - 1);
-                this.checkVisibility();
+                this.setCount(countElm.count - 1);
             }
         };
+        this.checkVisibility();
+    }
+
+    setCount(value) {
+        this.querySelector("board-token").setCount(value);
+        this.checkVisibility();
     }
 
     /**
      * Check if the inc/dec buttons should be clickable.
-     * If not, makes them slightly transparent.
+     * Disable the buttons at the current bounds.
      */
     checkVisibility() {
         const count = this.querySelector("board-token").count;
-        const incElm = this.querySelector(".increase");
-        if(count < this.max && incElm.classList.contains("less-visible")) {
-            incElm.classList.remove("less-visible");
-        } else if(count >= this.max && !incElm.classList.contains("less-visible")) {
-            incElm.classList.add("less-visible");
-        }
-
-        const decElm = this.querySelector(".decrease");
-        if(count > this.min && decElm.classList.contains("less-visible")) {
-            decElm.classList.remove("less-visible");
-        } else if(count <= this.min && !decElm.classList.contains("less-visible")) {
-            decElm.classList.add("less-visible");
-        }
+        this.querySelector(".increase").disabled = count >= this.max;
+        this.querySelector(".decrease").disabled = count <= this.min;
     }
 
     /**

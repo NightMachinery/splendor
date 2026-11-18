@@ -15,6 +15,7 @@ An online multiplayer web-based implementation of the strategy game Splendor, ad
 Play with **2 to 4 players** from a desktop, tablet or phone. Create a session
 in the lobby, have the other players join, then launch. During a turn, use
 **View board** to check the table before returning to your action.
+Tap a card to read its details. Purchases suggest an exact payment you can edit.
 [Responsive layout and browser testing](docs/responsive-and-e2e.md)
 
 ## Getting Started

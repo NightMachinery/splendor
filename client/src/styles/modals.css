@@ -257,13 +257,18 @@
   background-image: url("/images/bluebackground.jpg");
 }
 
+.quantity-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .buy-card-back-btn:hover,
 .buy-card-confirm-btn:hover,
 .reserve-card-back-btn:hover,
 .reserve-card-confirm-btn:hover,
 .restart-no-btn:hover,
 .restart-yes-btn:hover,
-.quantity-button:hover,
+.quantity-button:hover:enabled,
 .save-back-btn:hover,
 .save-confirm-btn:hover,
 .take-token-back-btn:hover,
@@ -277,11 +282,6 @@
   color: #f2d675;
   border-color: #f2d675;
   cursor: pointer;
-}
-
-.less-visible {
-  pointer-events: none;
-  opacity: 0.5;
 }
 
 /* DEV CARD PAYMENT MODAL */

@@ -3,6 +3,7 @@ import { SETTINGS } from "./settings.js";
 type ActionResponse = {
     error: boolean;
     message: string;
+    status: number;
 };
 
 type ActionDataCallback = () => JSON;
@@ -47,7 +48,8 @@ export const performAction = async (actionType: string, actionDataCallback: Acti
 
     const out: ActionResponse = {
         error: hadError,
-        message: respText
+        message: respText,
+        status: resp.status
     };
     return out;
 };
