@@ -1,10 +1,14 @@
 import { SETTINGS } from "./settings";
 import { transition } from "./titleScreen";
 import { showError } from "./notify.js";
+import { readLobbyInvite, withLobbyInvite } from "./lobby-invite.js";
+
+const invitedSession = readLobbyInvite();
+const lobbyPath = withLobbyInvite("/lobby/", invitedSession);
 
 document.addEventListener("DOMContentLoaded", () => {
     if(SETTINGS.hasLocalIdentity()) {
-        transition("/");
+        transition(invitedSession ? lobbyPath : "/");
     }
 });
 
@@ -20,7 +24,7 @@ form.addEventListener("submit", async (e) => {
     try {
         // the display name is stored only once the Lobby Service accepted it
         await SETTINGS.verifyCredentials({ allowCreate: true, displayName });
-        transition("/lobby/");
+        transition(lobbyPath);
     } catch(err) {
         if(err && err.transient) {
             showError("Could not reach the server. Check your connection and try again.");

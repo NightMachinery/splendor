@@ -82,6 +82,12 @@ This was checked with curl through an instance: every variant above returned
 403, `GET /ls/api/gameservices` still worked, and a player action still
 reached the GS.
 
+### Lobby invites
+
+Lobby invite links carry the public session ID. Sign-in keeps that ID while
+moving between the lobby and login pages. The guest joins using their own
+account and the same session checks as any lobby visitor.
+
 ### Migrate links no longer leak the account
 
 `GET /api/sessions/{id}/migrate/{roomToken}` returned the whole player record,

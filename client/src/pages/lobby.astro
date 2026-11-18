@@ -38,6 +38,7 @@ import "../styles/lobby.css";
                             </ul>
                         </details>
                     </div>
+                    <p class="invite-unavailable" role="status" hidden>The invited session is no longer available.</p>
                     <table class="current-sessions-table">
                         <tbody>
                             <tr>
@@ -86,9 +87,11 @@ import "../styles/lobby.css";
                         <button type="button" class="launch-btn ses-btn">Start game</button>
                         <button type="button" class="play-btn ses-btn">Play</button>
                         <button type="button" class="spectate-btn ses-btn">Spectate</button>
+                        <button type="button" class="copy-invite-btn ses-btn">Copy invite link</button>
                         <button type="button" class="leave-btn ses-btn">Leave</button>
                         <button type="button" class="del-btn ses-btn">Delete</button>
                     </div>
+                    <input type="url" class="session-invite-url" aria-label="Invite link" readonly hidden>
                 </td>
                 <td><div class="session-players-info"></div></td>
             </tr>

@@ -13,9 +13,9 @@ An online multiplayer web-based implementation of the strategy game Splendor, ad
 ## Responsive UI and live E2E
 
 Play with **2 to 4 players** from a desktop, tablet or phone. Create a session
-in the lobby and ask the other players to **Join**. Once a second player joins,
-the host can select **Start game** and everyone can select **Play**. During a
-turn, use **View board** to check the table before returning to your action.
+in the lobby and use **Copy invite link** to bring guests to it. Once a second
+player joins, the host can select **Start game** and everyone can select
+**Play**. During a turn, use **View board** before returning to your action.
 Tap a card to read its details. Purchases suggest an exact payment you can edit.
 [Responsive layout and browser testing](docs/responsive-and-e2e.md)
 

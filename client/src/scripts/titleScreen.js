@@ -7,7 +7,7 @@ export function transition(newLink) {
     transition_el.classList.add("is-active");
 
     setTimeout(() => {
-        window.location.pathname = newLink;
+        window.location.href = newLink;
     }, 400);
 }
 

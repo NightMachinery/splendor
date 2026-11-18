@@ -1,8 +1,10 @@
 import { SETTINGS, boardPathForVersion, createLongPoll, backoffDelay, LS_HOLDS_REQUESTS } from "./settings.js";
 import { checkForGameSaves } from "./lobby-saves.js";
 import { getUserDetail } from "./user-settings.js";
-import { showError } from "./notify.js";
+import { showError, showSuccess } from "./notify.js";
 import { renderProfileAvatar } from "./avatar.js";
+import { copyText } from "./clipboard.js";
+import { readLobbyInvite, withLobbyInvite } from "./lobby-invite.js";
 import {
     playerAlias, isObserver, isMod,
     renderPlayerBadges, renderModerationActions
@@ -131,6 +133,9 @@ export const focusSession = (sesId) => {
 
 
 document.addEventListener("DOMContentLoaded", () => {
+    const invitedSession = readLobbyInvite();
+    let openedInvite = false;
+
     // set user color
     // Avatar and role. Retried with backoff, without toasts, while the
     // Lobby Service is unreachable (e.g. during a redeploy).
@@ -187,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
             gamePicker.open = false;
             gamePicker.querySelector("summary").focus();
             try {
-                await createNewSession("splendor_" + option.dataset.version);
+                focusSession(await createNewSession("splendor_" + option.dataset.version));
             } catch (err) {
                 if (!err?.authRejected) showError(actionErrorText("Creating the session", err));
             } finally {
@@ -197,6 +202,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     const sessionIdOf = (elm) => elm.closest("tr[session-id]").getAttribute("session-id");
+
+    const copyInvite = async (button) => {
+        const link = new URL(withLobbyInvite("/lobby/", sessionIdOf(button)), window.location.origin).href;
+        const input = button.closest("td").querySelector(".session-invite-url");
+        if(await copyText(link).catch(() => false)) {
+            input.hidden = true;
+            showSuccess("Invite link copied.");
+            return;
+        }
+        input.value = link;
+        input.hidden = false;
+        input.focus();
+        input.select();
+    };
 
     const joinSession = (elm) => {
         const sessionId = sessionIdOf(elm);
@@ -332,6 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const updateSessionState = (ses, node) => {
             const host = ses.creator === username;
             const joined = ses.players.includes(username);
+            const invited = node.getAttribute("session-id") === invitedSession;
             const activeCount = ses.players.filter(p => !isObserver(ses, p)).length;
             const capacity = ses.gameParameters.maxSessionPlayers;
             // A saved game needs every original seat filled. A new game can start with two.
@@ -345,16 +365,19 @@ document.addEventListener("DOMContentLoaded", () => {
             node.toggleAttribute("created", host);
             node.toggleAttribute("launchable", host && ready && !ses.launched);
             node.toggleAttribute("started", ses.launched);
+            node.toggleAttribute("data-invited", invited);
 
             let message = "";
             if(ses.launched) {
-                if(joined) message = "Game started.";
+                if(joined || invited) message = "Game started.";
             } else if(host) {
                 const needed = Math.max(1, minPlayers - activeCount);
                 message = ready ? `Ready to start with ${activeCount} players.`
                     : `Waiting for ${needed} more ${needed === 1 ? "player" : "players"}.`;
             } else if(joined) {
                 message = "Waiting for the host to start.";
+            } else if(invited) {
+                message = activeCount >= capacity ? "The invited session is full." : "Invited session";
             }
 
             const status = node.querySelector(".session-status");
@@ -390,12 +413,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const launchBtn = tempNode.querySelector(".launch-btn.ses-btn");
             const playBtn = tempNode.querySelector(".play-btn.ses-btn");
             const spectateBtn = tempNode.querySelector(".spectate-btn.ses-btn");
+            const inviteBtn = tempNode.querySelector(".copy-invite-btn.ses-btn");
             delBtn.onclick = () => { deleteSession(delBtn); };
             leaveBtn.onclick = () => { leaveSession(leaveBtn); };
             joinBtn.onclick = () => { joinSession(joinBtn); };
             launchBtn.onclick = () => { launchSession(launchBtn); };
             playBtn.onclick = () => playSession(playBtn, sesId, gameVer);
             spectateBtn.onclick = () => playSession(spectateBtn, sesId, gameVer);
+            inviteBtn.onclick = () => copyInvite(inviteBtn);
 
             tbl.appendChild(tempNode);
 
@@ -403,7 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if(focusIndex !== -1) {
                 setTimeout(() => {
                     const elm = tbl.querySelector(`tr[session-id="${sesId}"]`);
-                    elm.scrollIntoView({ behavior: "smooth", block: "start" });
+                    elm?.scrollIntoView({ behavior: "smooth", block: "start" });
                 }, 100);
 
                 // now remove
@@ -447,6 +472,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 throw new Error("Session list reply has an unexpected shape.");
             }
             updateAvailableSessions(data);
+            if(invitedSession) {
+                const row = document.querySelector(".current-sessions-table tr[data-invited]");
+                document.querySelector(".invite-unavailable").hidden = !!row;
+                if(row && !openedInvite) {
+                    openedInvite = true;
+                    row.tabIndex = -1;
+                    row.focus({ preventScroll: true });
+                    row.scrollIntoView({ block: "start" });
+                }
+            }
             // e2e test hook (stable contract): the session list has rendered once
             document.body.dataset.splendorLobbyReady = "1";
         },

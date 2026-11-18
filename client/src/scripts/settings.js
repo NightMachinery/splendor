@@ -1,6 +1,7 @@
 // Define settings to be used, that are shared across the frontend
 
 import { md5Hex } from "./local-md5.js";
+import { readLobbyInvite, withLobbyInvite } from "./lobby-invite.js";
 
 /**
  * Check if the endpoint is alive.
@@ -392,7 +393,8 @@ export const SETTINGS = {
      */
     goToLogin: () => {
         if(!isLoginPage()) {
-            window.location.href = "/login/";
+            const inLobby = window.location.pathname.replace(/\/+$/, "") === "/lobby";
+            window.location.href = withLobbyInvite("/login/", inLobby ? readLobbyInvite() : null);
         }
     },
 

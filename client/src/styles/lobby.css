@@ -540,8 +540,38 @@ tr > th {
   margin-block-start: 0.25rem;
 }
 
+.current-sessions-table tr[data-invited] {
+  outline: 2px solid #f2d675;
+  outline-offset: -2px;
+}
+
+.invite-unavailable,
+.session-invite-url {
+  color: whitesmoke;
+  background: rgb(25 31 46);
+  font: 0.9rem / 1.4 system-ui, sans-serif;
+}
+
+.invite-unavailable {
+  padding: 0.75rem;
+}
+
+.session-invite-url {
+  width: calc(100% - 1.5rem);
+  margin-inline: 0.75rem;
+  min-height: 44px;
+  padding-inline: 0.5rem;
+  border: 1px solid goldenrod;
+  border-radius: 6px;
+}
+
+.current-sessions-table tr[started] .session-invite-url {
+  display: none;
+}
+
 .current-sessions-table .session-btns > div {
   display: flex;
+  flex-wrap: wrap;
 }
 
 .current-sessions-table .ses-btn:is(.join-btn, .launch-btn, .play-btn) {
@@ -558,6 +588,11 @@ tr > th {
 .current-sessions-table .ses-btn:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+.current-sessions-table tr[created]:not([started]) .copy-invite-btn {
+  display: block;
+  background-image: var(--bluebackground-img);
 }
 
 .saved-games-table .saved-game-btns .sg-btn {
