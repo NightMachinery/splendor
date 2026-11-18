@@ -42,7 +42,38 @@ const VERSION_ALIASES = {
     tradingposts: "BASE_ORIENT_TRADE_ROUTES", "trading-posts": "BASE_ORIENT_TRADE_ROUTES", "trade-routes": "BASE_ORIENT_TRADE_ROUTES",
 };
 
-const die = (/** @type {string} */ msg) => dieWith("seed.mjs", msg);
+/** @type {(msg: string) => never} */
+const die = (msg) => dieWith("seed.mjs", msg);
+
+/** Options that take a value, and plain flags. Anything else is a usage error. */
+const VALUED = new Set(["instance", "base-url", "ls-url", "gs-url", "version", "players", "names", "advance", "seed", "out", "from"]);
+const FLAGS = new Set(["allow-remote", "no-spectator", "no-launch", "no-session", "to-end", "verbose"]);
+/** What --from accepts; the rest describe a new game and would be ignored. */
+const WITH_FROM = new Set(["from", "advance", "to-end", "seed", "verbose", "allow-remote"]);
+
+/**
+ * Parse and check the command line: unknown options, values given to flags,
+ * flags missing their value and repeated options are usage errors, so a
+ * typo (--player=3) can never seed a different game than asked for.
+ * @param {string[]} argv
+ * @returns {Record<string, string | true>}
+ */
+export function parseSeedArgs(argv) {
+    /** @type {Record<string, any>} */
+    let args;
+    try { args = parseArgs(argv); } catch (err) { die(/** @type {Error} */ (err).message); }
+    for (const [k, v] of Object.entries(args)) {
+        if (!VALUED.has(k) && !FLAGS.has(k)) die(`unknown option --${k} (see the header of seed.mjs)`);
+        if (Array.isArray(v)) die(`--${k} is given more than once`);
+        if (VALUED.has(k) && v === true) die(`--${k} needs a value (--${k}=...)`);
+        if (FLAGS.has(k) && v !== true) die(`--${k} is a flag and takes no value`);
+    }
+    if (args.from) {
+        const extra = Object.keys(args).filter((k) => !WITH_FROM.has(k));
+        if (extra.length) die(`--from continues an existing game; ${extra.map((k) => `--${k}`).join(", ")} only apply when seeding a new one`);
+    }
+    return args;
+}
 
 /** The non-secret part of an identities file, for stdout. @param {any} data @param {string} file */
 const summary = (data, file) => ({
@@ -99,11 +130,11 @@ async function advance(api, data, opts) {
 }
 
 async function main() {
-    const args = parseArgs(process.argv.slice(2));
+    const args = parseSeedArgs(process.argv.slice(2));
     const allowRemote = !!args["allow-remote"];
-    const seed = Number(args.seed ?? 1);
+    if (args.seed !== undefined && !Number.isInteger(Number(args.seed))) die(`--seed must be a whole number, got ${args.seed}`);
     const turns = args.advance === undefined ? 0 : Number(args.advance);
-    if (!Number.isInteger(turns) || turns < 0) die(`--advance must be a whole number, got ${args.advance}`);
+    if (String(args.advance ?? "0").trim() === "" || !Number.isInteger(turns) || turns < 0) die(`--advance must be a whole number, got ${args.advance}`);
     const toEnd = !!args["to-end"];
 
     /** @type {any} */
@@ -133,7 +164,7 @@ async function main() {
         const version = VERSION_ALIASES[/** @type {keyof typeof VERSION_ALIASES} */ (String(args.version || "orient").toLowerCase())] ?? String(args.version);
         if (!GAME_VERSIONS.includes(version)) die(`unknown --version ${args.version}; use orient, cities, cities-nobles, tradingposts or one of ${GAME_VERSIONS.join(", ")}`);
         const players = Number(args.players ?? 2);
-        if (!Number.isInteger(players) || players < 2 || players > 4) die("--players must be 2, 3 or 4");
+        if (!Number.isInteger(players) || players < 2 || players > 4) die(`--players must be 2, 3 or 4, got ${args.players}`);
         const names = args.names ? String(args.names).split(",").map((s) => s.trim()).filter(Boolean) : [];
         if (names.length && names.length !== players) die(`--names lists ${names.length} names for ${players} players`);
 
