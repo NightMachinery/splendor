@@ -234,16 +234,31 @@ Specs:
     the board's LS session poll failing (406, then 400) once the LS has
     deleted the finished session;
   - at the end both seats show the game-over modal, "VICTORY" only for the
-    winners and "GAME OVER" for everyone else, the modal names every winner
-    (by username), and the LS has deleted the session.
+    winners and "GAME OVER" for everyone else, the modal names every winner,
+    and the LS has deleted the session. The modal may name a winner by
+    display name or by username: today it shows usernames (`gameover.js`
+    prints `p.name`), and the redesign is to show display names. A
+    `gameover-names` annotation says which one each seat showed. Once the
+    redesign lands, require the display name here;
 
   Two kinds of **known debt** are recorded and reported without counting as
   a plain failure:
-  - layout: every `E2E_LAYOUT_EVERY` turns the phone seat is probed for
-    elements that reach past the viewport and for controls of an open modal
-    that something else covers (`layout` annotation, `mobile-layout.json`).
-    The redesign is the next phase. In the runs so far the phone board passed
-    both probes at those moments;
+  - layout: each seat is probed on its own turn, while its "your turn"
+    modal is open: first on its first turn, then on its first turn after
+    every `E2E_LAYOUT_EVERY` more turns (in a 2-player game with the default
+    10, the phone at turns 1, 11, 21, ... and the desktop at 2, 12, 22, ...).
+    A probe lists the elements that reach past the viewport and the controls
+    of the open turn modal (`TURN_UI` in the spec, `.modal.show` today) that
+    something else covers (`layout` annotation, `layout.json`, and a
+    `layout-probes` annotation with the turns probed). A seat that is to move
+    but shows no open modal fails the test outright: its probe would see
+    nothing. The redesign is the next phase. Today, on the phone, the
+    PURCHASE and RESERVE buttons of the your-turn modal (RESERVE only in
+    Cities with nobles) are covered by the board chrome (tokens, the player
+    inventory, card images) at every probe in Orient, Cities and Cities with
+    nobles; the Trading Posts board and the desktop seat pass. Probing only
+    every tenth turn used to land on the desktop seat's turns alone, which
+    hid this;
   - duplicate badges: whenever the DOM is compared, an other-player tab must
     not show a badge (OWNER, MOD, OBSERVER) or a moderation button more than
     once (`duplicate-badges` annotation). Today it always does:
@@ -259,8 +274,10 @@ Specs:
   makes it a plain failure. When the badge bug is fixed and no layout
   finding remains, the tests pass outright.
 
-  Full-page screenshots of both seats at the start, at turn `E2E_MID_TURN`
-  and at game over are saved in the test's output folder
+  Full-page screenshots of both seats at the start (the desktop seat's
+  turn), at the first phone turn from turn `E2E_MID_TURN` on (so the phone's
+  own turn modal is in the picture) and at game over are saved in the test's
+  output folder
   (`test-results/<test>/desktop-start.png`, `mobile-start.png`,
   `desktop-mid.png`, `mobile-mid.png`, `desktop-game-over.png`,
   `mobile-game-over.png`), attached to the HTML report, and listed in a
@@ -401,14 +418,16 @@ Full-stack knobs:
   fail on the phone while the turn modals are covered, see the known layout
   debt), `force` both seats with clicks dispatched straight to the controls
   (checks the request bodies despite the covered layout).
-- `E2E_LAYOUT_EVERY` (default 10): probe the phone seat's layout every N
-  turns of a rendered game; 0 turns the probes off.
+- `E2E_LAYOUT_EVERY` (default 10): in a rendered game, probe each seat's
+  layout on its own turn about every N turns (see "Rendered games" above);
+  0 turns the probes off.
 - `E2E_DOM_EVERY` (default 5): compare both boards' DOM with the API state
   every N turns.
 - `E2E_IDLE_MS` (default 5000): length of each idle window in which the
   game-state requests are counted.
-- `E2E_MID_TURN` (default 24): the turn at which the mid-game screenshots
-  and idle window happen.
+- `E2E_MID_TURN` (default 24): the mid-game screenshots and idle window
+  happen at the first turn from this one on at which the phone seat is to
+  move (turn 25 in a 2-player game).
 
 Playwright and the mocked suite:
 

@@ -19,7 +19,8 @@ import { GAME_VERSIONS } from "./rules.mjs";
  *                  through the board UI instead of the API: "off" (default),
  *                  "desktop", "all", or "force" (both seats, clicks
  *                  dispatched so covered controls do not block)
- *   E2E_LAYOUT_EVERY  rendered games: mobile layout probe every N turns (default 10, 0 = off)
+ *   E2E_LAYOUT_EVERY  rendered games: probe each seat's layout on its own turn
+ *                  about every N turns (default 10, 0 = off)
  *   E2E_DOM_EVERY  rendered games: compare the DOM with the state every N turns (default 5)
  *   E2E_IDLE_MS    rendered games: length of each idle window in which state
  *                  requests are counted (default 5000)

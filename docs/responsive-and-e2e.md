@@ -36,14 +36,18 @@ remove it from `KNOWN_DEBT`.
 
 The rendered full games (`client/tests/e2e/rendered-game.spec.ts`) watch
 every game from a 1280x800 desktop seat and an emulated phone seat (Pixel 7,
-with touch) at the same time, and probe the phone board for the same two
-problems every few turns. A finding there is also recorded as known layout
-debt (an expected failure). The phone board passes both probes today, but it
-is far from comfortable: the whole board is a long single column (a full-page
-phone screenshot is over 3,000 device pixels tall), the history panel is a
-narrow strip of wrapped words, and the turn modals are covered as described
-in testing.md. Each run saves full-page screenshots of both seats at the
-start, mid-game and game over (see testing.md for where they land).
+with touch) at the same time, and probe each seat for the same two problems
+on its own turn, every few turns, while its your-turn modal is open. A
+finding there is also recorded as known layout debt (an expected failure).
+Today no board overflows, but on the phone the your-turn modal's PURCHASE
+and RESERVE buttons are covered by the board chrome in Orient, Cities and
+Cities with nobles (the Trading Posts board passes), the same debt the
+mocked layout checks list. The phone board is also far from comfortable:
+the whole board is a long single column (a full-page phone screenshot is
+over 3,000 device pixels tall) and the history panel is a narrow strip of
+wrapped words. Each run saves full-page screenshots of both seats at the
+start, mid-game (on a phone turn) and game over (see testing.md for where
+they land).
 
 ## Browser visual probes
 

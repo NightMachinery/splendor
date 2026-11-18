@@ -1,0 +1,117 @@
+name: Real-stack E2E
+
+# Whole games on the real Lobby Service and Game Service (see
+# docs/testing.md, "Running against a real stack"): both jars are built from
+# this commit and started as an isolated self-host instance, then
+# - the API suite plays every version and player count to the end and
+#   probes the rules with illegal moves (test:e2e:api);
+# - the rendered games watch a 2-player game per version from a desktop and
+#   a phone seat in Chromium (known layout debt shows as expected failures).
+# The Frontend Tests workflow covers the same specs offline on the fake
+# stack, which only checks the client against tests/fixtures/engine.mjs;
+# this one is what notices a server change that breaks the rules or the
+# long-polls.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'server/**'
+      - 'setup/LobbyService/**'
+      - 'client/**'
+      - 'self_host.py'
+      - '.github/workflows/e2e-real-stack.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'server/**'
+      - 'setup/LobbyService/**'
+      - 'client/**'
+      - 'self_host.py'
+      - '.github/workflows/e2e-real-stack.yml'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    env:
+      E2E_INSTANCE: ci
+      PW_WEBKIT: '0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # The pnpm version comes from "packageManager" in client/package.json.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: client/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+
+      # self_host.py runs every process in tmux and serves the instance
+      # through a private Caddy (pinned to the version it was verified with).
+      - name: Install tmux, lsof and Caddy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux lsof
+          curl -fsSL https://github.com/caddyserver/caddy/releases/download/v2.6.2/caddy_2.6.2_linux_amd64.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP" caddy
+          sudo mv "$RUNNER_TEMP/caddy" /usr/local/bin/caddy
+          caddy version
+
+      # The same commands docs/testing.md gives; instance-start never builds them.
+      - name: Build the Game Service and Lobby Service jars
+        run: |
+          mvn -B -f server/pom.xml -DskipTests -Dmaven.javadoc.skip=true -Dpmd.skip=true -Dcheckstyle.skip=true package
+          mvn -B -f setup/LobbyService/pom.xml -Psqlite -DskipTests -Dmaven.javadoc.skip=true -Dpmd.skip=true package
+
+      - name: Install client dependencies
+        working-directory: ./client
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: ./client
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Builds client/dist, starts the LS, the GS and Caddy on loopback, and
+      # waits until the GS has registered its services.
+      - name: Start an isolated instance
+        run: python3 self_host.py instance-start ci
+
+      - name: Whole games and rule probes over the API
+        working-directory: ./client
+        run: pnpm run test:e2e:api --output=test-results/real-api
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/real-api
+
+      - name: Rendered games (Chromium)
+        if: ${{ !cancelled() }}
+        working-directory: ./client
+        run: pnpm exec playwright test --project=e2e-ui-chromium --output=test-results/real-ui
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/real-ui
+
+      - name: Stop the instance
+        if: ${{ always() }}
+        run: python3 self_host.py instance-stop ci
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: real-stack-e2e
+          path: |
+            client/playwright-report/
+            client/test-results/
+            .self-host/instances/ci/logs/
+          retention-days: 14
+          if-no-files-found: ignore

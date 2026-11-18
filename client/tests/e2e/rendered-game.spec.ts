@@ -27,19 +27,24 @@ import type { SplendorApi, User } from "./lib/splendor-api.mjs";
 // - no page error and no console error on either seat (apart from the LS
 //   session poll failing once the LS has deleted the finished session);
 // - at the end, both seats show the game-over modal, VICTORY only for the
-//   winner(s), and the Lobby Service has dropped the session.
+//   winner(s), the modal names every winner, and the Lobby Service has
+//   dropped the session.
 //
 // Known debt, recorded and reported but not counted as a plain failure:
-// - every E2E_LAYOUT_EVERY turns the phone seat lists the elements that
-//   reach past window.innerWidth and the controls of an open modal that
-//   something else covers (the responsive redesign is the next phase);
+// - layout: each seat is probed on its own turn, the first one and then
+//   every E2E_LAYOUT_EVERY turns, while its "your turn" modal is open: the
+//   elements that reach past window.innerWidth and the controls of the open
+//   modal that something else covers (the responsive redesign is the next
+//   phase). A seat that is to move but shows no open modal is a plain
+//   failure, since the probe would see nothing;
 // - whenever the DOM is compared, any other-player tab that shows a badge
 //   (OWNER, MOD, ...) or a moderation button more than once (a game.js bug,
 //   see the end of the test).
 // A finding marks the test as an expected failure, but only when every other
 // check passed. PW_LAYOUT_STRICT=1 turns it into a plain failure.
 //
-// Full-page screenshots of both seats at the start, mid-game and game over
+// Full-page screenshots of both seats at the start (the desktop seat's
+// turn), mid-game (the first phone turn from E2E_MID_TURN on) and game over
 // land in the test's output folder (test-results/...): desktop-start.png,
 // mobile-start.png, desktop-mid.png, ..., mobile-game-over.png.
 //
@@ -53,6 +58,12 @@ const IDLE_MS = Number(process.env.E2E_IDLE_MS || 5000);
 const MID_TURN = Number(process.env.E2E_MID_TURN || 24);
 /** Most game-state GETs one seat may send in an idle window. */
 const MAX_IDLE_STATE_GETS = 3;
+/**
+ * The turn UI the layout probe checks for covered controls: the board opens
+ * #your-turn-modal (a .modal.show) as soon as it renders the seat's turn.
+ * When the redesign replaces it, point this at the new turn UI.
+ */
+const TURN_UI = ".modal.show";
 
 const SEAT_DEVICES: Record<string, { desktop: string; mobile: string }> = {
     chromium: { desktop: "Desktop Chrome", mobile: "Pixel 7" },
@@ -62,6 +73,7 @@ const SEAT_DEVICES: Record<string, { desktop: string; mobile: string }> = {
 const TOKEN_COLOURS = ["Red", "Blue", "Green", "White", "Brown", "Gold"] as const;
 
 const md5 = (text: string) => createHash("md5").update(text, "utf8").digest("hex");
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const body = (page: Page) => page.locator("body");
 
 type Seat = {
@@ -248,7 +260,12 @@ for (const version of VERSIONS) {
         const [desktop, mobile] = seats;
         const shots: string[] = [];
         const idleNotes: string[] = [];
-        const layout: Array<{ turn: number; overflow: Offender[]; covered: CoveredControl[] }> = [];
+        const layout: Array<{ seat: Seat["label"]; turn: number; overflow: Offender[]; covered: CoveredControl[] }> = [];
+        /** turns at which each seat's layout was probed */
+        const probed: Record<Seat["label"], number[]> = { desktop: [], mobile: [] };
+        /** the first turn at which each seat is probed next (on its own turn) */
+        const nextProbe = new Map<Seat, number>(seats.map((s) => [s, 0]));
+        let midDone = false;
         const badgeDebt: string[] = [];
         const log: string[] = [];
         let gameEndedAt = Infinity;
@@ -268,22 +285,42 @@ for (const version of VERSIONS) {
                 return false;
             } : undefined;
 
+            /** Probe one seat's layout while its own turn UI is open. */
+            const probeLayout = async (seat: Seat, turn: number) => {
+                probed[seat.label].push(turn);
+                // anime.js card and token flights (clones in #anime-overlay)
+                // are driven from script, so settle() does not see them; let
+                // them land, or a flight passing over a button reads as cover
+                await seat.page.waitForFunction(() => !document.querySelector("#anime-overlay")?.childElementCount, undefined,
+                    { timeout: 5000, polling: 100 }).catch(() => undefined);
+                await settle(seat.page, { quietMs: 300, timeout: 3000 });
+                const open = await seat.page.locator(TURN_UI).count();
+                expect.soft(open, `turn ${turn}: the ${seat.label} seat is to move but shows no ${TURN_UI}, `
+                    + "so its covered-controls probe sees nothing (update TURN_UI if the turn UI changed)").toBeGreaterThan(0);
+                // [id^=ran-]: anime.js token and card flights, transient by design
+                const overflow = await findHorizontalOverflow(seat.page, { ignore: ["[id^='ran-']"] });
+                // controls of the open turn UI that a tap cannot reach
+                const covered = await findCoveredControls(seat.page, TURN_UI);
+                if (overflow.length || covered.length) layout.push({ seat: seat.label, turn, overflow, covered });
+            };
+
             const onStep = async ({ state, step, turn, turnEnded }: any) => {
                 if (state.gameOver) gameEndedAt = Math.min(gameEndedAt, Date.now());
                 await waitForSync(api, seats, sessionId, state, `turn ${turn}, action ${step}`);
                 if (!turnEnded || state.gameOver) return;
                 if (turn % DOM_EVERY === 0) await compareDom(seats, state, `turn ${turn}`, badgeDebt);
-                if (LAYOUT_EVERY > 0 && turn % LAYOUT_EVERY === 0) {
-                    await settle(mobile.page, { quietMs: 300, timeout: 3000 });
-                    // [id^=ran-]: anime.js token and card flights, transient by design
-                    const overflow = await findHorizontalOverflow(mobile.page, { ignore: ["[id^='ran-']"] });
-                    // controls of an open modal (the "your turn" prompt, a follow-up) that a tap cannot reach
-                    const covered = await findCoveredControls(mobile.page, ".modal.show");
-                    if (overflow.length || covered.length) layout.push({ turn, overflow, covered });
+                // Each seat only shows its turn UI on its own turn, so probe
+                // the seat that is to move (in a 2-player game the phone moves
+                // on odd turns, the desktop on even ones).
+                const toMove = seats.find((s) => s.user.username === state.players[state.turnCounter]?.name);
+                if (LAYOUT_EVERY > 0 && toMove && turn >= nextProbe.get(toMove)!) {
+                    nextProbe.set(toMove, turn + LAYOUT_EVERY);
+                    await probeLayout(toMove, turn);
                 }
-                if (turn === MID_TURN) {
+                if (!midDone && turn >= MID_TURN && toMove === mobile) {
+                    midDone = true;
                     await screenshotSeats(seats, testInfo, "mid", shots);
-                    await idleWindow(seats, `mid-game (turn ${turn})`, idleNotes);
+                    await idleWindow(seats, `mid-game (turn ${turn}, the phone seat to move)`, idleNotes);
                 }
             };
 
@@ -303,7 +340,22 @@ for (const version of VERSIONS) {
                 await expect(modal, `the ${seat.label} seat shows the game-over modal`).toBeVisible({ timeout: 15_000 });
                 const won = result.winners.includes(seat.user.username);
                 await expect(modal.locator("h1"), `the ${seat.label} seat ${won ? "won" : "lost"}`).toHaveText(won ? "VICTORY" : "GAME OVER");
-                for (const winner of result.winners) await expect(modal.locator(".winners-text")).toContainText(winner);
+                // Today the modal names winners by username (gameover.js shows
+                // p.name); the redesign is to show display names. Accept either
+                // and record which one, so the change shows up without breaking this.
+                const winnersText = modal.locator(".winners-text");
+                for (const winner of result.winners) {
+                    const displayName = users.find((u) => u.username === winner)?.displayName;
+                    const names = [displayName, winner].filter((n): n is string => !!n);
+                    await expect(winnersText, `the ${seat.label} seat's game-over modal names the winner ${names.join(" or ")}`)
+                        .toContainText(new RegExp(names.map(escapeRegExp).join("|")));
+                }
+                const shown = (await winnersText.textContent()) ?? "";
+                const byDisplayName = result.winners.every((w) => {
+                    const d = users.find((u) => u.username === w)?.displayName;
+                    return !!d && d !== w && shown.includes(d);
+                });
+                testInfo.annotations.push({ type: "gameover-names", description: `${seat.label} seat: winners shown by ${byDisplayName ? "display name" : "username"} ("${shown.trim()}")` });
             }
             await screenshotSeats(seats, testInfo, "game-over", shots);
             // live: false, a finished board may stop polling
@@ -315,6 +367,12 @@ for (const version of VERSIONS) {
             throw err;
         } finally {
             for (const note of idleNotes) testInfo.annotations.push({ type: "idle", description: note });
+            if (LAYOUT_EVERY > 0) {
+                testInfo.annotations.push({
+                    type: "layout-probes",
+                    description: (["desktop", "mobile"] as const).map((l) => `${l} seat at turns ${probed[l].join(", ") || "(none)"}`).join("; "),
+                });
+            }
             testInfo.annotations.push({ type: "screenshots", description: shots.join("\n") });
             for (const seat of seats) await seat.context.close().catch(() => undefined);
         }
@@ -335,20 +393,20 @@ for (const version of VERSIONS) {
 
         // Known debt last: it may turn this test into an expected failure,
         // which must never hide a real failure above. Two kinds:
-        // - layout: the phone board overflows the viewport or covers the
-        //   controls of an open modal (the responsive redesign is next);
+        // - layout: a board overflows the viewport, or something covers the
+        //   controls of its open turn modal (the responsive redesign is next);
         // - duplicate badges: an other-player tab shows a badge (OWNER, MOD,
         //   ...) or a moderation button more than once, because game.js
         //   appends a new badge row and a new button row on every render
         //   (updateOtherPlayerInfo looks the rows up by classes it never sets).
         const report = layout.map((l) => [
-            `turn ${l.turn}:`,
+            `${l.seat} seat, turn ${l.turn}:`,
             ...(l.overflow.length ? ["  past window.innerWidth:", formatOffenders(l.overflow)] : []),
             ...(l.covered.length ? ["  covered modal controls:", formatOffenders(l.covered)] : []),
         ].join("\n")).join("\n");
         if (layout.length) {
-            testInfo.annotations.push({ type: "layout", description: `phone seat:\n${report}` });
-            await testInfo.attach("mobile-layout.json", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
+            testInfo.annotations.push({ type: "layout", description: report });
+            await testInfo.attach("layout.json", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
         }
         if (badgeDebt.length) {
             testInfo.annotations.push({ type: "duplicate-badges", description: badgeDebt.slice(0, 6).join("\n") + (badgeDebt.length > 6 ? `\n(${badgeDebt.length} in all)` : "") });
@@ -359,7 +417,7 @@ for (const version of VERSIONS) {
                 testInfo.annotations.push({ type: "known-debt", description: `${kinds}; see docs/testing.md, "Rendered games"` });
                 test.fail(true, `known debt: ${kinds}`);
             }
-            expect.soft(layout, `layout problems on the phone seat:\n${report}`).toEqual([]);
+            expect.soft(layout, `layout problems:\n${report}`).toEqual([]);
             expect.soft(badgeDebt, "other-player tabs that show a badge or a moderation button more than once").toEqual([]);
         }
     });
