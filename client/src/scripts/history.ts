@@ -137,18 +137,34 @@ const checkTokens = (oldTokens: any, newTokens: any) => {
     }
 };
 
-const historyContainer = document.querySelector("#history .drawer");
-export const focusLastEvent = () => {
-    const lastEventContainer = historyContainer.querySelector(".event-container:last-child");
-    if(lastEventContainer) {
-        const lastEventContent = lastEventContainer.querySelector(".event:last-child");
-        if(lastEventContent) {
-            lastEventContent.scrollIntoView({ behavior: "smooth" });
-        } else {
-            lastEventContainer.scrollIntoView({ behavior: "smooth" });
-        }
-    }
+const drawer = document.querySelector<HTMLElement>("#history-events");
+const historyContainer = drawer.querySelector(".history-entries");
+const latestButton = document.querySelector<HTMLButtonElement>("#history .history-latest");
+let followingLatest = true;
+
+const isNearLatest = () => drawer.scrollHeight - drawer.clientHeight - drawer.scrollTop <= 8;
+
+const syncScroll = () => {
+    if(followingLatest) drawer.scrollTop = drawer.scrollHeight;
+    followingLatest = isNearLatest();
+    latestButton.hidden = followingLatest;
 };
+
+drawer.addEventListener("scroll", () => {
+    followingLatest = isNearLatest();
+    latestButton.hidden = followingLatest;
+}, { passive: true });
+
+latestButton.addEventListener("click", () => {
+    drawer.focus({ preventScroll: true });
+    followingLatest = true;
+    syncScroll();
+});
+
+// Account for new entries, art that finishes loading and drawer resizes.
+const resize = new ResizeObserver(syncScroll);
+resize.observe(historyContainer);
+resize.observe(drawer);
 
 const startEvent = (name: string): void => {
     const tNode = (document.querySelector("#history-event-template") as HTMLTemplateElement)
@@ -156,7 +172,6 @@ const startEvent = (name: string): void => {
     tNode.querySelector(".event-name").textContent = `${name}'${name[name.length - 1].toLowerCase() === "s" ? "" : "s"} turn`;
 
     historyContainer.appendChild(tNode);
-    focusLastEvent();
 };
 
 const appendHistory = (htmlText: string, ...classes: string[]): void => {
@@ -171,8 +186,6 @@ const appendHistory = (htmlText: string, ...classes: string[]): void => {
     newEvent.classList.add(...classes);
     newEvent.innerHTML = htmlText;
     lastEventContainer.querySelector(".event-content").appendChild(newEvent);
-
-    focusLastEvent();
 };
 
 /**
@@ -213,7 +226,6 @@ const writeGameOver = (data: any): void => {
 
     historyContainer.appendChild(overNode);
     historyContainer.appendChild(tNode);
-    focusLastEvent();
 };
 
 const playerUpdaters = [];

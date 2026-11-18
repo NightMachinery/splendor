@@ -3,7 +3,9 @@
 On a narrow screen the board, your inventory and opponents stack vertically.
 The top bar shows whose turn it is. During a move, tap **View board** to read
 the board and history, then **Return to action** to pick up the same choice.
-The history drawer opens at a readable width and scrolls independently.
+The history drawer scrolls independently and follows the latest turn until
+you scroll back. New moves keep your place while you read earlier turns.
+Select **Latest turn** to return to the newest entry and follow new moves again.
 
 Tap a face-up development card or one of your reserved cards to inspect
 its art, costs, bonuses and effects. Purchase, reserve and cascade choices

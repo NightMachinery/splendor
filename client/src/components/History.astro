@@ -2,10 +2,15 @@
 import "../styles/history.css";
 ---
 <div id="history">
-    <button type="button" class="drawer-opener" aria-expanded="false" aria-controls="history-events">
-        <span>History</span>
-    </button>
-    <div class="drawer" id="history-events"></div>
+    <div class="history-heading">
+        <button type="button" class="drawer-opener" aria-expanded="false" aria-controls="history-events">
+            <span>History</span>
+        </button>
+        <button type="button" class="history-latest" aria-controls="history-events" hidden>Latest turn</button>
+    </div>
+    <div class="drawer" id="history-events" role="region" aria-label="Turn history" tabindex="0">
+        <div class="history-entries"></div>
+    </div>
 
     <template id="history-token-template">
         <div class="token-change">
@@ -58,17 +63,32 @@ import "../styles/history.css";
         pointer-events: none;
     }
 
-    .drawer-opener {
+    .history-heading {
+        display: flex;
+    }
+
+    .drawer-opener,
+    .history-latest {
         background: linear-gradient( to top, rgb(0 2 6), rgb(11 19 33), rgb(35 52 84) );
+        min-height: var(--opener-height);
+        cursor: pointer;
+        pointer-events: auto;
+    }
+
+    .drawer-opener {
+        flex: 1;
         display: flex;
         justify-content: center;
         align-items: center;
         font-family: Judson, serif;
-        max-height: var(--opener-height);
-        min-height: var(--opener-height);
         border-radius: var(--border-size) var(--border-size) 0 0;
-        cursor: pointer;
-        pointer-events: auto;
+    }
+
+    .history-latest {
+        color: #f2d675;
+        border-inline-start: var(--border-style);
+        font: 600 0.9rem / 1.2 system-ui, sans-serif;
+        padding-inline: 0.75rem;
     }
 
     .drawer-opener span {
@@ -86,15 +106,29 @@ import "../styles/history.css";
     .drawer {
         background: rgb(240, 240, 240);
         overflow: auto;
+        overscroll-behavior: contain;
         border-top: var(--border-style);
+        padding: 2%;
+    }
+
+    .history-entries {
         display: flex;
         flex-direction: column;
-        padding: 2%;
         gap: 1em;
     }
 
     #history:not(.opened) .drawer {
         visibility: hidden;
+    }
+
+    #history:not(.opened) .history-latest {
+        display: none;
+    }
+
+    .drawer:focus-visible,
+    .history-heading button:focus-visible {
+        outline: 2px solid #956b08;
+        outline-offset: -3px;
     }
 
     @media (max-width: 900px) {
@@ -106,15 +140,18 @@ import "../styles/history.css";
             box-shadow: none;
         }
 
-        .drawer-opener {
+        .history-heading {
             align-self: flex-end;
+        }
+
+        .drawer-opener,
+        .history-latest {
             padding-inline: 1rem;
             border: var(--border-style);
         }
 
         .drawer {
             border: var(--border-style);
-            overscroll-behavior: contain;
         }
     }
 </style>
