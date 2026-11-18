@@ -65,7 +65,7 @@ const actionErrorText = (label, err) => {
  * Run an authenticated Lobby Service request for a session button.
  * A 401 drops the cached identity check so the next action re-verifies.
  *
- * @param {HTMLElement} elm button (disabled while the request runs)
+ * @param {HTMLButtonElement} elm button (disabled while the request runs)
  * @param {string} method HTTP method
  * @param {string} path path under the LS API, starting with /api/
  * @param {string} label action name for error messages
@@ -329,50 +329,36 @@ document.addEventListener("DOMContentLoaded", () => {
             document.querySelector(`${tableSel} tr[session-id="${sesId}"]`).remove();
         });
 
-        const setAttributes = (ses, node) => {
-            const sesPlayers = ses.players;
-            const activePlayers = sesPlayers.filter(p => !isObserver(ses, p));
+        const updateSessionState = (ses, node) => {
+            const host = ses.creator === username;
+            const joined = ses.players.includes(username);
+            const activeCount = ses.players.filter(p => !isObserver(ses, p)).length;
+            const capacity = ses.gameParameters.maxSessionPlayers;
+            // A saved game needs every original seat filled. A new game can start with two.
+            const restoring = ses.savegameid !== "";
+            const minPlayers = restoring ? capacity : 2;
+            const ready = restoring ? activeCount === capacity : activeCount >= minPlayers;
 
-            if(sesPlayers.includes(username)) {
-                node.setAttribute("joined", "true");
-            } else {
-                node.removeAttribute("joined");
-            }
+            node.toggleAttribute("joined", joined);
+            node.toggleAttribute("mod", isMod(ses, username));
+            node.toggleAttribute("full", activeCount >= capacity);
+            node.toggleAttribute("created", host);
+            node.toggleAttribute("launchable", host && ready && !ses.launched);
+            node.toggleAttribute("started", ses.launched);
 
-            if(isMod(ses, username)) {
-                node.setAttribute("mod", "true");
-            } else {
-                node.removeAttribute("mod");
-            }
-
-            if(activePlayers.length >= ses.gameParameters.maxSessionPlayers) {
-                node.setAttribute("full", "true");
-            } else {
-                node.removeAttribute("full");
-            }
-
-            if(ses.creator === username) {
-                node.setAttribute("created", "true");
-            } else {
-                node.removeAttribute("created");
-            }
-
-            // if regular game and has enough players
-            const regGameCan = ses.savegameid === "" && activePlayers.length > 1 && !ses.launched;
-            // if save and equals players
-            const saveCan = ses.savegameid !== "" && !ses.launched
-                            && ses.gameParameters.maxSessionPlayers === activePlayers.length;
-            if(ses.creator === username && (regGameCan || saveCan)) {
-                node.setAttribute("launchable", "true");
-            } else {
-                node.removeAttribute("launchable");
-            }
-
+            let message = "";
             if(ses.launched) {
-                node.setAttribute("started", "true");
-            } else {
-                node.removeAttribute("started");
+                if(joined) message = "Game started.";
+            } else if(host) {
+                const needed = Math.max(1, minPlayers - activeCount);
+                message = ready ? `Ready to start with ${activeCount} players.`
+                    : `Waiting for ${needed} more ${needed === 1 ? "player" : "players"}.`;
+            } else if(joined) {
+                message = "Waiting for the host to start.";
             }
+
+            const status = node.querySelector(".session-status");
+            if(status.textContent !== message) status.textContent = message;
         };
 
         // Add available sessions
@@ -395,7 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             renderSessionPlayers(trNode, ses);
 
-            setAttributes(ses, trNode);
+            updateSessionState(ses, trNode);
 
             // assign button events
             const delBtn = tempNode.querySelector(".del-btn.ses-btn");
@@ -435,7 +421,7 @@ document.addEventListener("DOMContentLoaded", () => {
             trNode.querySelector(".session-game-name").textContent = ses.gameParameters.displayName;
             trNode.querySelector(".session-creator-name").textContent = playerAlias(ses, ses.creator);
             trNode.querySelector(".session-creator-name").title = `Internal id: ${ses.creator}`;
-            setAttributes(ses, trNode);
+            updateSessionState(ses, trNode);
             renderSessionPlayers(trNode, ses);
         });
 

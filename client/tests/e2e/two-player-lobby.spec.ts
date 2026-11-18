@@ -13,7 +13,11 @@ async function login(page: Page, name: string) {
 
 test("two players create, join, launch and trade turns from phone and desktop", async ({ api, browser }, testInfo) => {
     test.skip(!stack?.baseUrl, "needs a client origin");
-    const phone = await browser.newContext({ ...devices[testInfo.project.name.includes("webkit") ? "iPhone 14" : "Pixel 7"], baseURL: stack!.baseUrl! });
+    const phone = await browser.newContext({
+        ...devices[testInfo.project.name.includes("webkit") ? "iPhone 14" : "Pixel 7"],
+        viewport: { width: 320, height: 650 },
+        baseURL: stack!.baseUrl!,
+    });
     const desktop = await browser.newContext({ ...devices["Desktop Chrome"], baseURL: stack!.baseUrl! });
     const tag = randomUUID().slice(0, 8);
     try {
@@ -26,13 +30,19 @@ test("two players create, join, launch and trade turns from phone and desktop", 
         await host.getByRole("button", { name: "Splendor Orient", exact: true }).tap();
         const room = host.locator("tr[session-id][created]");
         await expect(room).toHaveCount(1);
-        await expect(room.locator(".launch-btn")).toBeHidden();
+        await expect(room.getByRole("status")).toHaveText("Waiting for 1 more player.");
+        await expect(room.getByRole("button", { name: "Start game" })).toBeHidden();
         const sessionId = (await room.getAttribute("session-id"))!;
         const guestRoom = guest.locator(`tr[session-id="${sessionId}"]`);
-        await guestRoom.locator(".join-btn").click();
-        await room.locator(".launch-btn").tap({ timeout: 15_000 });
-        await guestRoom.locator(".play-btn").click({ timeout: 15_000 });
-        await room.locator(".play-btn").tap();
+        await guestRoom.getByRole("button", { name: "Join", exact: true }).press("Enter");
+        await expect(guestRoom.getByRole("status")).toHaveText("Waiting for the host to start.");
+        await expect(guestRoom.getByRole("button", { name: "Play", exact: true })).toBeHidden();
+        await expect(room.getByRole("status")).toHaveText("Ready to start with 2 players.");
+        await expect.poll(() => host.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+        await room.getByRole("button", { name: "Start game" }).tap();
+        await expect(guestRoom.getByRole("status")).toHaveText("Game started.");
+        await guestRoom.getByRole("button", { name: "Play", exact: true }).press("Enter");
+        await room.getByRole("button", { name: "Play", exact: true }).tap();
 
         await Promise.all([host, guest].map(async (page) => {
             await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");

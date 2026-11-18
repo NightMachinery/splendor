@@ -13,8 +13,9 @@ An online multiplayer web-based implementation of the strategy game Splendor, ad
 ## Responsive UI and live E2E
 
 Play with **2 to 4 players** from a desktop, tablet or phone. Create a session
-in the lobby, have the other players join, then launch. During a turn, use
-**View board** to check the table before returning to your action.
+in the lobby and ask the other players to **Join**. Once a second player joins,
+the host can select **Start game** and everyone can select **Play**. During a
+turn, use **View board** to check the table before returning to your action.
 Tap a card to read its details. Purchases suggest an exact payment you can edit.
 [Responsive layout and browser testing](docs/responsive-and-e2e.md)
 
@@ -99,7 +100,7 @@ The "Create Session" button lets you choose the game version to play. You will s
 
 A game takes two to four players. Players can click on “Join” to join a game. Notice that only the creator has the permission to delete an unlaunched game.
 
-The creator can launch the game once enough players have gathered.
+The host can select **Start game** when the lobby says the session is ready.
 
 Every player should click on "Play" to show the game board.
 

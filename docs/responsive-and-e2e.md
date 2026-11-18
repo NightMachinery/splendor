@@ -21,8 +21,11 @@ available gold, or leave the gold in the bank. The reserve dialog says when
 the bank is out of gold and the card can still be reserved.
 
 The entry pages use the device's viewport. In the lobby, **Create Session**
-opens a tap and keyboard accessible game picker. A new session is ready to
-launch when a second player joins.
+opens a game picker you can use by touch or keyboard. The host sees how many
+more players are needed and can select **Start game** as soon as a second
+player joins. Guests see when they're waiting for the host. After the host
+starts the game, both players select **Play** to enter. The lobby stacks room
+details and actions vertically on phones, including when moderation is open.
 
 ## CSS structure
 
