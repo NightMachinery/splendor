@@ -35,6 +35,14 @@
 
 .event-content .card-event {
   gap: 0.5em;
+  flex-wrap: wrap;
+}
+
+.event-content .card-event .content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-inline-size: 0;
 }
 
 .event-content .card-event .suffix {
@@ -51,4 +59,30 @@
   display: inline;
   max-height: 2.5rem;
   border-radius: var(--card-border-radius);
+}
+
+.event-content .history-card {
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--sp-tap);
+  min-block-size: var(--sp-tap);
+  padding: 0.125rem;
+  border-radius: var(--card-border-radius);
+  cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: -1px;
+}
+
+.event-content .history-card:focus-visible {
+  outline-color: #956b08;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .event-content .history-card:hover {
+    outline-color: #956b08;
+  }
+}
+
+.event-content .card-event .history-card img {
+  max-height: 3rem;
 }

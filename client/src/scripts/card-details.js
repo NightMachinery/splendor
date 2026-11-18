@@ -3,6 +3,8 @@ import { costRows, reserveOutcome, reserveReturnOptions } from "./sp/rules-pay.j
 
 let state;
 let player;
+// A History entry can point to a card that has already left the game state.
+const cardSnapshots = new WeakMap();
 
 export function purchaseContext(cardId) {
     const match = locateCard(state, cardId);
@@ -53,7 +55,7 @@ function costLine(label, costs) {
     return line;
 }
 
-function renderReadout(root, card) {
+function renderReadout(root, card, payingPlayer = player) {
     root.replaceChildren();
     if (!card) return;
 
@@ -61,7 +63,7 @@ function renderReadout(root, card) {
     summary.textContent = describeRewards(card);
     root.append(summary);
 
-    const rows = costRows(card, player);
+    const rows = costRows(card, payingPlayer);
     const bonusCost = card.costType === "Bonus";
     if (root.dataset.cardReadout === "cascade") {
         root.append("Free as a cascade choice.");
@@ -98,8 +100,9 @@ export function setCardDetailsState(data, username) {
     state = data;
     player = resolvePlayer(data, username);
     const dialog = document.getElementById("card-inspector");
-    if (dialog.open) {
-        const shown = locateCard(data, dialog.querySelector("[data-card-readout]").dataset.cardId);
+    const liveCardId = dialog.querySelector("[data-card-readout]").dataset.cardId;
+    if (dialog.open && liveCardId) {
+        const shown = locateCard(data, liveCardId);
         if (data.gameOver || !shown || (shown.where !== "market" && shown.owner !== username)) dialog.close();
     }
     for (const root of document.querySelectorAll(".modal.show [data-card-readout][data-card-id], #card-inspector[open] [data-card-id]")) {
@@ -115,7 +118,9 @@ function labelCard(element, card, verb) {
     element.setAttribute("aria-label", `${verb} ${context}${isOrientCard(card) ? "Orient " : ""}card, ${describeRewards(card)}`);
 }
 
-export function setCardInspectTarget(element, card) {
+export function setCardInspectTarget(element, card, { snapshot = false } = {}) {
+    if (card && snapshot) cardSnapshots.set(element, card);
+    else cardSnapshots.delete(element);
     if (!card) {
         for (const attr of ["data-card-inspect", "role", "tabindex", "aria-haspopup", "aria-label"]) element.removeAttribute(attr);
         return;
@@ -136,14 +141,21 @@ export function labelCardChoice(element) {
 
 function inspectCard(element) {
     const id = element.getAttribute("card-id");
-    const card = cardById(state, id);
+    const snapshot = cardSnapshots.get(element);
+    const card = snapshot ?? cardById(state, id);
     if (!card) return;
     const dialog = document.getElementById("card-inspector");
     const tier = tierOf(card);
     const kind = isOrientCard(card) ? "Orient" : "development";
     dialog.querySelector("h2").textContent = tier ? `Tier ${tier} ${kind} card` : "Development card";
     dialog.querySelector("img").src = `/images/development-cards/${encodeURIComponent(id)}.jpg`;
-    showCardReadout(dialog, id);
+    if (snapshot) {
+        const root = dialog.querySelector("[data-card-readout]");
+        delete root.dataset.cardId;
+        renderReadout(root, snapshot, null);
+    } else {
+        showCardReadout(dialog, id);
+    }
     dialog.showModal();
 }
 

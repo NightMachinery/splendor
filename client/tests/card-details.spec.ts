@@ -50,6 +50,57 @@ test("a waiting player can open and close card details with the keyboard", async
     await expect(card).toBeFocused();
 });
 
+test("history opens revealed cards and keeps their original details after they are used", async ({ page, hasTouch, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 320, height: 650 });
+    const game = createBasicGame();
+    const backend = await mockGameState(page, game);
+    await mockGetUsername(page, "spectator");
+    await page.goto("/gameboard/?sessionId=123");
+    await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");
+    await activate(page.getByRole("button", { name: "History", exact: true }), hasTouch);
+
+    const player = game.getPlayer("linus");
+    player.devCards.push(game.tier1OrientDeck.visibleCards.pop()!);
+    game.tier1OrientDeck.addOrReplace(realCard("097"));
+    backend.setGame(game.setTurnCounter(1));
+
+    const history = page.getByRole("region", { name: "Turn history" });
+    const obtained = history.locator(".card-event").filter({ hasText: "Obtained" });
+    const card = obtained.getByRole("button", { name: /Inspect tier 1 Orient card/ });
+    await expect(card).toBeVisible();
+    const target = await card.boundingBox();
+    expect(target?.width).toBeGreaterThanOrEqual(44);
+    expect(target?.height).toBeGreaterThanOrEqual(44);
+    if (hasTouch) await card.tap();
+    else await card.press("Enter");
+
+    const inspector = page.getByRole("dialog", { name: "Tier 1 Orient card" });
+    await expect(inspector).toBeVisible();
+    await expect(inspector).toContainText("Printed purchase cost");
+    await expect(inspector).toContainText("Discard this card when you spend either");
+
+    player.devCards.pop();
+    backend.setGame(game.setTurnCounter(0));
+    await expect(page.locator("#history-events .card-event .prefix").filter({ hasText: "Used" })).toBeAttached();
+    await expect(inspector).toBeVisible();
+    await activate(inspector.getByRole("button", { name: "Close" }), hasTouch);
+
+    const used = history.locator(".card-event").filter({ hasText: "Used" });
+    await activate(used.getByRole("button", { name: /Inspect tier 1 Orient card/ }), hasTouch);
+    await expect(inspector).toContainText("2 gold bonuses");
+    await activate(inspector.getByRole("button", { name: "Close" }), hasTouch);
+
+    player.reservedCards.push(game.tier1OrientDeck.visibleCards.shift()!);
+    game.tier1OrientDeck.addOrReplace(realCard("095"));
+    backend.setGame(game.setTurnCounter(1));
+    const reserved = history.locator(".card-event").filter({ hasText: "Reserved" });
+    const reservedCard = reserved.getByRole("button", { name: /Inspect tier 1 Orient card/ });
+    await expect(reservedCard).toHaveAttribute("card-id", "091");
+    await activate(reservedCard, hasTouch);
+    await expect(inspector).toContainText("Choose one of your existing gem colours");
+    expect(backend.actions).toHaveLength(0);
+});
+
 test("purchase suggests the reduced cost and submits an edited payment", async ({ page, hasTouch }) => {
     const game = createBasicGame();
     game.getPlayer("linus").reservedCards.push(realCard("05"));

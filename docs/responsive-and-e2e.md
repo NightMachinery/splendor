@@ -9,6 +9,8 @@ Select **Latest turn** to return to the newest entry and follow new moves again.
 Turn headings and the winner message use the player display names from the
 board, including when a display name update arrives during play.
 Token changes show gem colors and counts next to the icons and wrap on phones.
+Tap a revealed development card in History to see its printed cost and effects,
+even after the card leaves the board.
 
 Tap a face-up development card or one of your reserved cards to inspect
 its art, costs, bonuses and effects. Purchase, reserve and cascade choices

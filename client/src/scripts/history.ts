@@ -1,7 +1,8 @@
+import { setCardInspectTarget } from "./card-details.js";
 
 type Card = {
     id: string;
-    newTokenType?: string;
+    tokenType?: string;
 };
 
 /**
@@ -24,11 +25,11 @@ export const cardsDiff = (oldCards: any[], newCards: any[]): [Card[], Card[], Ca
     newCards.forEach(c => {
         const oc = oldCardsMap.get(c.id);
         if(!oc) {
-            added.push({ id: c.id });
+            added.push(c);
         } else if(oc.isSatchel && c.isSatchel) {
             // check for changes, could have support for adding custom checks if needed
             if(oc.tokenType !== c.tokenType) {
-                changed.push({ id: c.id, newTokenType: c.tokenType });
+                changed.push(c);
             }
         }
     });
@@ -37,35 +38,46 @@ export const cardsDiff = (oldCards: any[], newCards: any[]): [Card[], Card[], Ca
     oldCards.forEach(c => {
         const oc = newCardsMap.get(c.id);
         if(!oc) {
-            removed.push({ id: c.id });
+            removed.push(c);
         }
     });
 
     return [added, removed, changed];
 };
 
-export const writeCardUpdate = (prefix: string, cards: Card[], imagePath: string, suffix: string = null) => {
+export const writeCardUpdate = (prefix: string, cards: Card[], imagePath: string, suffix?: Node) => {
     if(cards.length === 0) return;
 
     const tNode = (document.querySelector("#history-card-template") as HTMLTemplateElement)
                    .content.cloneNode(true) as HTMLDivElement;
-    tNode.querySelector(".prefix").innerHTML = prefix;
-    tNode.querySelector(".suffix").innerHTML = suffix;
+    tNode.querySelector(".prefix").textContent = prefix;
+    if(suffix) tNode.querySelector(".suffix").append(suffix);
     const imgContainer = tNode.querySelector(".content");
     cards.forEach(c => {
         const img = document.createElement("img");
         img.setAttribute("src", `/images/${imagePath}/${c.id}.jpg`);
-        imgContainer.appendChild(img);
+        img.alt = "";
+        if(imagePath === "development-cards") {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "history-card";
+            button.setAttribute("card-id", c.id);
+            button.append(img);
+            setCardInspectTarget(button, c, { snapshot: true });
+            imgContainer.append(button);
+        } else {
+            imgContainer.append(img);
+        }
     });
 
-    appendHistory(tNode.querySelector(".event").innerHTML, "card-event");
+    appendHistory(tNode.querySelector(".event"));
 };
 
 const writeSatchelUpdate = (cards: Card[]) => {
     for (const card of cards) {
         const tokenText = document.createElement("div");
-        tokenText.append("is now ", createToken(card.newTokenType));
-        writeCardUpdate("Bonus of", [card], "development-cards", tokenText.innerHTML);
+        tokenText.append("is now ", createToken(card.tokenType));
+        writeCardUpdate("Bonus of", [card], "development-cards", tokenText);
     }
 };
 
@@ -101,7 +113,7 @@ const checkTokens = (oldTokens: Record<string, number>, newTokens: Record<string
             if(index > 0) entry.append(", ");
             entry.append(token);
         });
-        appendHistory(entry.innerHTML, "token-event");
+        appendHistory(entry, "token-event");
     }
 };
 
@@ -159,18 +171,15 @@ const startEvent = (username: string, displayNameFor: DisplayNameFor): void => {
     historyContainer.appendChild(tNode);
 };
 
-const appendHistory = (htmlText: string, ...classes: string[]): void => {
+const appendHistory = (entry: Element, ...classes: string[]): void => {
     const lastEventContainer = historyContainer.querySelector(".event-container:last-child");
     if(!lastEventContainer) {
         console.log("append history called but no event has been made");
         return;
     }
 
-    const newEvent = document.createElement("div");
-    newEvent.classList.add("event");
-    newEvent.classList.add(...classes);
-    newEvent.innerHTML = htmlText;
-    lastEventContainer.querySelector(".event-content").appendChild(newEvent);
+    entry.classList.add("event", ...classes);
+    lastEventContainer.querySelector(".event-content").appendChild(entry);
 };
 
 /**
@@ -266,5 +275,5 @@ export const writeUpdate = (last: any, current: any, displayNameFor: DisplayName
 export const writeBasicUpdate = (text: string): void => {
     const textNode = document.createElement("div");
     textNode.textContent = text;
-    appendHistory(textNode.innerHTML, "card-event");
+    appendHistory(textNode, "card-event");
 };
