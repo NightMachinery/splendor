@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { lobbySession } from "./util/backend-mock.js";
 import { mockGetUsername } from "./util/ls-mock.js";
 import { mockGameState } from "./util/server-mock.js";
 import { createBasicGame, TokenType } from "./util/game.js";
@@ -95,6 +96,35 @@ test("history keeps older turns in view and can resume following the latest", as
     await nextTurn(15);
     await expect.poll(distanceToBottom).toBeLessThanOrEqual(8);
     expect(await page.evaluate(() => window.scrollY)).toBe(pagePosition);
+});
+
+test("history follows the board's display names through alias changes and a tie", async ({ page }) => {
+    const game = createBasicGame();
+    const backend = await mockGameState(page, game);
+    await mockGetUsername(page, "spectator");
+    await page.goto("/gameboard/?sessionId=123");
+    await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");
+    await page.getByRole("button", { name: "History", exact: true }).click();
+
+    const headings = page.locator("#history-events .event-name");
+    const turn = page.locator("#game-turn-status");
+    await expect(headings).toHaveText(["linus’s turn"]);
+    backend.setLobbySession("123", {
+        ...lobbySession({ creator: "linus", players: ["linus", "maex"], launched: true }),
+        displayNames: { linus: "Avery & Jules", maex: "Mina <Pilot>" },
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(turn).toHaveText("Avery & Jules’s turn");
+    await expect(headings).toHaveText(["Avery & Jules’s turn"]);
+
+    backend.setGame(game.setTurnCounter(1));
+    await expect(turn).toHaveText("Mina <Pilot>’s turn");
+    const turns = ["Avery & Jules’s turn", "Mina <Pilot>’s turn"];
+    await expect(headings).toHaveText(turns);
+
+    backend.setGame(game.finish("linus", "maex"));
+    await expect(page.locator("#gameover-modal .winners-text")).toHaveText("Avery & Jules and Mina <Pilot> tied as winners of the game!");
+    await expect(headings).toHaveText([...turns, "The game has ended.", "🎉 Avery & Jules and Mina <Pilot> are the winners! 🎉"]);
 });
 
 test("returned tokens and two of a colour go through the put-back modal", async ({ page }) => {

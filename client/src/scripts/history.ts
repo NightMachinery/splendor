@@ -166,10 +166,27 @@ const resize = new ResizeObserver(syncScroll);
 resize.observe(historyContainer);
 resize.observe(drawer);
 
-const startEvent = (name: string): void => {
+type DisplayNameFor = (username: string) => string;
+type FormatHeading = (displayNameFor: DisplayNameFor) => string;
+const namedHeadings = new Map<Element, FormatHeading>();
+
+const setNamedHeading = (event: Element, displayNameFor: DisplayNameFor, format: FormatHeading): void => {
+    const heading = event.querySelector(".event-name");
+    heading.textContent = format(displayNameFor);
+    namedHeadings.set(heading, format);
+};
+
+export const refreshHistoryNames = (displayNameFor: DisplayNameFor): void => {
+    for (const [heading, format] of namedHeadings) {
+        const text = format(displayNameFor);
+        if(heading.textContent !== text) heading.textContent = text;
+    }
+};
+
+const startEvent = (username: string, displayNameFor: DisplayNameFor): void => {
     const tNode = (document.querySelector("#history-event-template") as HTMLTemplateElement)
                    .content.cloneNode(true) as HTMLDivElement;
-    tNode.querySelector(".event-name").textContent = `${name}'${name[name.length - 1].toLowerCase() === "s" ? "" : "s"} turn`;
+    setNamedHeading(tNode, displayNameFor, nameFor => `${nameFor(username)}’s turn`);
 
     historyContainer.appendChild(tNode);
 };
@@ -193,19 +210,17 @@ const appendHistory = (htmlText: string, ...classes: string[]): void => {
  * @param last 
  * @param current 
  */
-const writeCurrentTurn = (last: any, current: any): void => {
+const writeCurrentTurn = (last: any, current: any, displayNameFor: DisplayNameFor): void => {
     if(current.gameOver) {
         return;
     }
 
     if(!last || current.players[current.turnCounter].name !== last.players[last.turnCounter].name) {
-        const name = current.players[current.turnCounter].name;
-        console.log(`${name}'s turn`);
-        startEvent(name);
+        startEvent(current.players[current.turnCounter].name, displayNameFor);
     }
 };
 
-const writeGameOver = (data: any): void => {
+const writeGameOver = (data: any, displayNameFor: DisplayNameFor): void => {
     const tNode = (document.querySelector("#history-event-template") as HTMLTemplateElement)
                    .content.cloneNode(true) as HTMLDivElement;
 
@@ -213,16 +228,13 @@ const writeGameOver = (data: any): void => {
                    .content.cloneNode(true) as HTMLDivElement;
     overNode.querySelector(".event-name").textContent = "The game has ended.";
 
-    const winners = data.winners;
-
-    if(winners.length > 1) {
-        const names = winners.map(p => p.name);
+    const winnerIds: string[] = data.winners.map((player: { name: string }) => player.name);
+    setNamedHeading(tNode, displayNameFor, nameFor => {
+        const names = winnerIds.map(nameFor);
+        if(names.length === 1) return `🎉 ${names[0]} is the winner! 🎉`;
         const text = names.length == 2 ? names.join(" and ") : names.join(", ");
-        tNode.querySelector(".event-name").textContent = `🎉 ${text} are the winners! 🎉`;
-    } else {
-        // one person won
-        tNode.querySelector(".event-name").textContent = `🎉 ${winners[0].name} is the winner! 🎉`;
-    }
+        return `🎉 ${text} are the winners! 🎉`;
+    });
 
     historyContainer.appendChild(overNode);
     historyContainer.appendChild(tNode);
@@ -238,13 +250,13 @@ export const registerGameUpdater = (func: (oldState: any, newState: any) => {}):
     gameUpdaters.push(func);
 };
 
-export const writeUpdate = (last: any, current: any): void => {
+export const writeUpdate = (last: any, current: any, displayNameFor: DisplayNameFor): void => {
     if(current.gameOver && !last) {
-        writeGameOver(current);
+        writeGameOver(current, displayNameFor);
     }
 
     if(!last) {
-        writeCurrentTurn(last, current);
+        writeCurrentTurn(last, current, displayNameFor);
         return;
     }
 
@@ -277,9 +289,9 @@ export const writeUpdate = (last: any, current: any): void => {
 
     gameUpdaters.forEach(func => func(last, current));
 
-    writeCurrentTurn(last, current);
+    writeCurrentTurn(last, current, displayNameFor);
     if(current.gameOver) {
-        writeGameOver(current);
+        writeGameOver(current, displayNameFor);
     }
 };
 

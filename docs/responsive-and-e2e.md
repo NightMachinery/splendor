@@ -6,6 +6,8 @@ the board and history, then **Return to action** to pick up the same choice.
 The history drawer scrolls independently and follows the latest turn until
 you scroll back. New moves keep your place while you read earlier turns.
 Select **Latest turn** to return to the newest entry and follow new moves again.
+Turn headings and the winner message use the player display names from the
+board, including when a display name update arrives during play.
 
 Tap a face-up development card or one of your reserved cards to inspect
 its art, costs, bonuses and effects. Purchase, reserve and cascade choices

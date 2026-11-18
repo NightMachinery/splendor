@@ -2,7 +2,7 @@ import { SETTINGS, createLongPoll, fetchWithTimeout, LS_HOLDS_REQUESTS } from ".
 import { startTurn, verifyNoModals, performFollowUpAction, showNextModal } from "./modals/modals.js";
 import { animateMoveToken } from "./animation/tokens";
 import { moveCardFromDeck, moveCard, moveCardReserved } from "./animation/cards";
-import { writeUpdate } from "./history";
+import { refreshHistoryNames, writeUpdate } from "./history";
 import { runDelayed } from "./animation/utils";
 import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
@@ -16,6 +16,7 @@ import {
 } from "./moderation-ui.js";
 
 let currentLobbySession = null;
+const displayNameFor = (username) => playerAlias(currentLobbySession, username);
 
 const getSessionId = () => (new URL(document.location)).searchParams.get("sessionId");
 
@@ -41,7 +42,7 @@ const updateTurnStatus = (state) => {
     const status = document.querySelector("#game-turn-status");
     const text = state.gameOver ? "Game over" : !name ? "" : name === SETTINGS.getUsername()
         ? "Your turn"
-        : `${playerAlias(currentLobbySession, name)}’s turn`;
+        : `${displayNameFor(name)}’s turn`;
     if(status && status.textContent !== text) status.textContent = text;
 };
 
@@ -69,6 +70,7 @@ const fetchLobbySession = async (sessionId) => {
 const refreshGameModerationChrome = (state = currentState) => {
     if(!state || !currentLobbySession) return;
     updateTurnStatus(state);
+    refreshHistoryNames(displayNameFor);
     const sessionId = (new URL(document.location)).searchParams.get("sessionId");
     state.players.forEach((playerInfo) => {
         const pNode = document.querySelector(`.other-players .other-player[pname="${playerInfo.name}"]`);
@@ -434,7 +436,7 @@ const furtherUpdates = [];
 const renderGameState = (data, hash) => {
     currentState = data;
     if(historyHash !== hash) {
-        writeUpdate(renderedState, data);
+        writeUpdate(renderedState, data, displayNameFor);
         historyHash = hash;
     }
 
@@ -474,7 +476,7 @@ const renderGameState = (data, hash) => {
     updateTurnStatus(data);
     if(data.gameOver) {
         verifyNoModals();
-        initGameOver(data, (name) => playerAlias(currentLobbySession, name));
+        initGameOver(data, displayNameFor);
         showNextModal("#gameover-modal");
     } else if(currentPlayer && currentPlayer.name === curUsername) {
         // it's your turn
