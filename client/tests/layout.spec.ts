@@ -122,6 +122,33 @@ for (const pc of PAGES) {
     }
 }
 
+for (const board of PAGES.filter(({ name }) => ["board-orient", "board-cities", "board-tradingposts"].includes(name))) {
+    for (const width of [320, 360]) {
+        test(`${board.name} keeps all market cards tappable at ${width}px`, async ({ page, isMobile }) => {
+            test.skip(!isMobile, "the market tap target check uses phone projects");
+            await page.setViewportSize({ width, height: 700 });
+            await board.setup(page);
+            await page.goto(board.path);
+            await board.ready(page);
+            const cards = page.locator("#board [data-card-inspect]");
+            await expect(cards).toHaveCount(18);
+            const positions = await cards.evaluateAll((elements) => elements.map((element) => {
+                const { width, height, left, right } = element.getBoundingClientRect();
+                return { width, height, left, right };
+            }));
+            expect(positions.every((r) => r.width >= 44 && r.height >= 44 && r.left >= 0 && r.right <= width), JSON.stringify(positions)).toBe(true);
+            for (const deck of [".board-cards-dev-deck", ".board-cards-dev-deck-orient"]) {
+                const backs = page.locator(`#board ${deck} img`);
+                await expect(backs).toHaveCount(3);
+                for (const back of await backs.all()) await expect(back).toBeVisible();
+            }
+            const orient = page.locator("#board .board-cards-level1 .board-card-dev-orient[data-card-inspect]").first();
+            await orient.tap();
+            await expect(page.getByRole("dialog", { name: "Tier 1 Orient card" })).toBeVisible();
+        });
+    }
+}
+
 // Open each turn modal independently so the geometry probe can report its
 // own controls even if a preceding dialog has a layout regression.
 type ModalCase = { name: string; modal: string; steps: string[] };

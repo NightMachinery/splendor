@@ -906,3 +906,73 @@ body {
     font-size: 0.8rem;
   }
 }
+
+/* The deck backs can share a short row so the six market cards get the width. */
+@media (max-width: 400px) {
+  #board .board-cards-row {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--sp-space-1);
+  }
+
+  #board .board-cards-dev-deck,
+  #board .board-cards-dev-deck-orient {
+    grid-row: 1;
+    gap: var(--sp-space-1);
+    color: var(--sp-text-muted);
+    font: 600 var(--sp-fs-xs) / 1.2 var(--sp-font-ui);
+  }
+
+  #board .board-cards-dev-deck {
+    grid-column: 1 / 5;
+  }
+
+  #board .board-cards-dev-deck-orient {
+    grid-column: 5 / -1;
+  }
+
+  #board .board-cards-dev-deck::after {
+    content: var(--market-tier-label);
+  }
+
+  #board .board-cards-level1 {
+    --market-tier-label: "Tier 1";
+  }
+
+  #board .board-cards-level2 {
+    --market-tier-label: "Tier 2";
+  }
+
+  #board .board-cards-level3 {
+    --market-tier-label: "Tier 3";
+  }
+
+  #board .board-cards-dev-deck-orient::after {
+    content: "Orient";
+  }
+
+  #board .board-cards-dev-deck > img,
+  #board .board-cards-dev-deck-orient > img {
+    height: 1.5rem;
+    flex: none;
+  }
+
+  #board .board-cards-dev-selectable {
+    grid-area: 2 / 1 / 3 / -1;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--sp-space-1);
+  }
+
+  #board .board-cards-dev-selectable .board-card-dev {
+    min-inline-size: var(--sp-tap);
+    min-block-size: var(--sp-tap);
+    margin: 0;
+    justify-content: center;
+  }
+
+  #board .board-cards-dev-selectable .board-card-dev > img {
+    inline-size: min(100%, 3.4rem);
+    height: auto;
+  }
+}

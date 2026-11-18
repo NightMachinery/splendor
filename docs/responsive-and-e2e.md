@@ -9,6 +9,9 @@ Tap a face-up development card or one of your reserved cards to inspect
 its art, costs, bonuses and effects. Purchase, reserve and cascade choices
 show the selected card's details before confirmation. Purchase details show
 what remains after your gem bonuses when they reduce the printed cost.
+On phones up to 400 px wide, the deck backs sit above their card groups.
+All six face-up market cards stay together with at least 44 px tap targets
+at 320 px and wider.
 Purchase confirmation starts with an exact payment when one is available.
 Adjust the gem and gold counters to choose a different payment, or reset to
 the suggestion. The purchase summary shows when payment will discard a
