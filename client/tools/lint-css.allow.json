@@ -13,8 +13,6 @@
     "src/pages/gameboard.astro": { "owner": "WP-SHELL", "rules": ["viewport-meta"] },
     "src/pages/gameboard-cities.astro": { "owner": "WP-SHELL", "rules": ["viewport-meta"] },
     "src/pages/gameboard-tradingposts.astro": { "owner": "WP-SHELL", "rules": ["viewport-meta"] },
-    "src/pages/index.astro": { "owner": "WP-LOBBY", "rules": ["viewport-meta"] },
-    "src/pages/login.astro": { "owner": "WP-LOBBY", "rules": ["viewport-meta"] },
     "src/pages/lobby.astro": { "owner": "WP-LOBBY", "rules": ["viewport-meta"] },
     "src/pages/settings.astro": { "owner": "permanent: settings is out of scope", "rules": "*" },
     "src/pages/adminzone.astro": { "owner": "permanent: adminzone is out of scope", "rules": "*" },
@@ -45,7 +43,7 @@
     },
     "src/styles/titleScreen.css": {
       "owner": "WP-LOBBY",
-      "rules": ["background-fixed", "font-family", "hover-media", "viewport-height"]
+      "rules": ["background-fixed", "font-family", "hover-media"]
     },
     "src/styles/transitions.css": { "owner": "WP-LOBBY (the slide transitions are removed)", "rules": ["z-index"] }
   }

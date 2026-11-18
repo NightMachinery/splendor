@@ -178,27 +178,21 @@ document.addEventListener("DOMContentLoaded", () => {
         return welcome;
     }
     
-    /**
-     * Create a session with the specified version of Splendor.
-     *
-     * @param {string} gameVersion version of splendor
-     */
-    function createSession(gameVersion) {
-        const createBtn = document.querySelector(".create-session-btn");
-        createBtn.disabled = true;
-
-        createNewSession(gameVersion)
-            .catch((err) => {
-                if(!(err && err.authRejected)) showError(actionErrorText("Creating the session", err));
-            })
-            .finally(() => createBtn.disabled = false);
-    }
-
-    // SPECIFY GAME VERSION
-    document.querySelectorAll(".game-options li").forEach(option => {
-        option.addEventListener("click", () => {
-            const version = "splendor_" + option.getAttribute("version");
-            createSession(version);
+    const gamePicker = document.querySelector(".game-selection-dropdown");
+    let creatingSession = false;
+    gamePicker.querySelectorAll("button[data-version]").forEach(option => {
+        option.addEventListener("click", async () => {
+            if (creatingSession) return;
+            creatingSession = true;
+            gamePicker.open = false;
+            gamePicker.querySelector("summary").focus();
+            try {
+                await createNewSession("splendor_" + option.dataset.version);
+            } catch (err) {
+                if (!err?.authRejected) showError(actionErrorText("Creating the session", err));
+            } finally {
+                creatingSession = false;
+            }
         });
     });
 

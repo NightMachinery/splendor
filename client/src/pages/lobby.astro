@@ -26,17 +26,17 @@ import "../styles/lobby.css";
                     <div class="header">
                         <span>Available Sessions</span>
                         <!-- SELECT GAME VERSION -->
-                        <div class="game-selection-dropdown">
-                            <div class="select">
-                                <span class="create-session-btn">Create Session</span>
-                                <div class="caret"></div>
-                            </div>
+                        <details class="game-selection-dropdown">
+                            <summary class="select">
+                                Create Session
+                                <span class="caret" aria-hidden="true"></span>
+                            </summary>
                             <ul class="game-options">
-                                <li version="BASE_ORIENT">Splendor Orient</li>
-                                <li version="BASE_ORIENT_CITIES">Splendor Cities</li>
-                                <li version="BASE_ORIENT_TRADE_ROUTES">Splendor Trading Posts</li>
+                                <li><button type="button" data-version="BASE_ORIENT">Splendor Orient</button></li>
+                                <li><button type="button" data-version="BASE_ORIENT_CITIES">Splendor Cities</button></li>
+                                <li><button type="button" data-version="BASE_ORIENT_TRADE_ROUTES">Splendor Trading Posts</button></li>
                             </ul>
-                        </div>
+                        </details>
                     </div>
                     <table class="current-sessions-table">
                         <tbody>
@@ -54,12 +54,6 @@ import "../styles/lobby.css";
                 <div class="saved-games">
                     <div class="header">
                         <span>Saved Games</span>
-                        <div class="game-selection-dropdown">
-                            <div class="select">
-                                <!-- placeholder to ensure its the same header size as the create session table -->
-                                <span class="create-session-btn">Create Session</span>
-                            </div>
-                        </div>
                     </div>
                     <table class="saved-games-table">
                         <tbody>

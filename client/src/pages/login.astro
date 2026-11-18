@@ -4,12 +4,12 @@ import { ToastContainer } from "react-toastify";
 
 import "../styles/loginstyle.css";
 import "../styles/transitions.css";
+import BaseHead from "../components/BaseHead.astro";
 ---
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
     <head>
-        <title>Splendor | Login</title>
-        <link rel="icon" type="image/png" href="/images/SplendorFavicon.png">
+        <BaseHead title="Splendor | Login" preloadDisplayFont />
         
     </head>
 
@@ -22,13 +22,13 @@ import "../styles/transitions.css";
             <form>
                 <h1>Splendor</h1>
                 <div class="txt-field">
-                    <input type="text" name="uname" required>
+                    <input id="uname" type="text" name="uname" required>
                     <span></span>
                     <label for="uname"> Display name </label>
                 </div>
                 
                 <div class="button-area">
-                    <button class="login-button" input type="submit"> Continue </button>
+                    <button class="login-button" type="submit"> Continue </button>
                 </div>
             </form>
         </div>

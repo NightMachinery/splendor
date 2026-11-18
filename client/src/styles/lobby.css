@@ -375,11 +375,8 @@ tr > th {
 .game-selection-dropdown {
   margin-left: auto;
   margin-right: var(--right-margin);
+  position: relative;
   box-sizing: border-box;
-}
-
-#section-loadgame .game-selection-dropdown {
-  visibility: hidden;
 }
 
 .select {
@@ -401,6 +398,10 @@ tr > th {
   transition: all 0.2s ease-in-out;
 }
 
+.select::-webkit-details-marker {
+  display: none;
+}
+
 .select:hover,
 #add-user:hover {
   color: #f2d675;
@@ -414,11 +415,7 @@ tr > th {
   color: #f2d675;
 }
 
-.game-selection-dropdown:hover .game-options {
-  display: block;
-}
-
-.game-selection-dropdown:hover .select .caret {
+.game-selection-dropdown[open] .select .caret {
   transform: rotate(180deg);
 }
 
@@ -435,13 +432,16 @@ tr > th {
   border: 0.098rem solid goldenrod;
   background-image: var(--bluebackground-img);
   position: absolute;
+  right: 0;
+  min-width: max-content;
   border-radius: 0.5em;
   box-shadow: 0 0.3em 0.5em rgba(0, 0, 0, 0.2);
-  display: none;
 }
 
-.game-options li {
-  padding: 0.5em 1em;
+.game-options button {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5em 0.75em;
   border-radius: 0.5em;
   font-size: 0.7em;
   font-family: Judson, serif;
@@ -452,7 +452,7 @@ tr > th {
   cursor: pointer;
 }
 
-.game-options li:hover {
+.game-options button:is(:hover, :focus-visible) {
   background:
   linear-gradient(
     to top,
@@ -597,7 +597,7 @@ tr > th {
 }
 
 .session-player-panel {
-  min-width: min(40rem, 70vw);
+  min-width: min(26rem, 34vw);
 }
 
 .session-player-summary {
@@ -745,29 +745,47 @@ tr > th {
 }
 
 @media (width <= 900px) {
+  .header {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .game-selection-dropdown .select {
+    min-height: 44px;
+    padding-inline: 0.85em;
+  }
+
   .current-sessions-table,
   .current-sessions-table tbody,
   .current-sessions-table tr,
-  .current-sessions-table td {
+  .current-sessions-table td,
+  .saved-games-table,
+  .saved-games-table tbody,
+  .saved-games-table tr,
+  .saved-games-table td {
     display: block;
     width: 100%;
   }
 
-  .current-sessions-table tr:first-child {
+  .current-sessions-table tr:first-child,
+  .saved-games-table tr:first-child {
     display: none;
   }
 
-  .current-sessions-table tbody > tr:not(:first-child) {
+  .current-sessions-table tbody > tr:not(:first-child),
+  .saved-games-table tbody > tr:not(:first-child) {
     margin: 0.75rem 0;
     border-radius: 1rem;
     overflow: hidden;
   }
 
-  .current-sessions-table tr td.session-btns {
+  .current-sessions-table tr td.session-btns,
+  .saved-games-table tr td.saved-game-btns {
     width: 100%;
   }
 
-  .current-sessions-table .session-btns > div {
+  .current-sessions-table .session-btns > div,
+  .saved-games-table .saved-game-btns > div {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
@@ -778,6 +796,11 @@ tr > th {
 
   .session-player-list {
     grid-template-columns: 1fr;
+  }
+
+  .current-sessions-table .ses-btn,
+  .saved-games-table .sg-btn {
+    min-height: 44px;
   }
 }
 
