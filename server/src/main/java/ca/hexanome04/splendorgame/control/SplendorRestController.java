@@ -14,9 +14,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
-import dev.dacbiet.simpoll.ContentWatcher;
-import dev.dacbiet.simpoll.Fetcher;
-import dev.dacbiet.simpoll.ResultGenerator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +44,10 @@ public class SplendorRestController {
     private final GameSavesManager gameSavesManager;
     private final long longPollTimeout;
     private final Map<String, GameStateWatcher> gameWatcher;
+
+    // how many state long-polls are held at once per game; a poll beyond that pushes out the oldest
+    @Value("${longpoll.maxHeldPerGame:64}")
+    private int maxHeldPollsPerGame = 64;
 
     @Autowired
     Initializer initializer;
@@ -83,8 +84,28 @@ public class SplendorRestController {
         this.initializer = initializer;
     }
 
-    private GameStateWatcher watcherFor(String sessionId) {
-        return gameWatcher.computeIfAbsent(sessionId, id -> new GameStateWatcher());
+    private GameStateWatcher newWatcher(GameSession session) {
+        // serialized under the session lock, so that an action cannot change the game halfway
+        return new GameStateWatcher(() -> {
+            synchronized (session) {
+                return SplendorTypeAdapter.newClientGson().toJson(session.getGame());
+            }
+        }, longPollTimeout, maxHeldPollsPerGame);
+    }
+
+    private GameStateWatcher watcherFor(String sessionId, GameSession session) {
+        return gameWatcher.computeIfAbsent(sessionId, id -> newWatcher(session));
+    }
+
+    /**
+     * Number of state long-polls held right now on a session (for tests).
+     *
+     * @param sessionId session id
+     * @return held polls, 0 for an unknown session
+     */
+    int heldPolls(String sessionId) {
+        GameStateWatcher watcher = gameWatcher.get(sessionId);
+        return watcher == null ? 0 : watcher.heldPolls();
     }
 
     private static JsonObject parseActionBody(String bodyData) {
@@ -195,43 +216,34 @@ public class SplendorRestController {
                     gameVersion);
         }
         logger.info("Launched new game session: " + sessionId);
-        gameWatcher.put(sessionId, new GameStateWatcher());
+        gameWatcher.put(sessionId, newWatcher(sessionManager.getGameSession(sessionId)));
     }
 
     /**
-     * Obtain the game state of specified session.
+     * Obtain the game state of specified session (a long-poll, see {@link GameStateWatcher}).
      *
      * @param sessionId session id to get game state of
-     * @param hash optional hash from client
+     * @param hash optional MD5 of the state the client shows; when it matches, the request is held
+     *             until the state changes (200) or the long-poll timeout passes (204)
      * @return JSON object of game state
      */
     @GetMapping(value = "/api/sessions/{sessionId}", produces = "application/json; charset=utf-8")
-    public DeferredResult getGameState(@PathVariable String sessionId, @RequestParam(required = false) String hash) {
+    public DeferredResult<ResponseEntity<String>> getGameState(@PathVariable String sessionId,
+                                                               @RequestParam(required = false) String hash) {
         try {
             // Check if session exists
             GameSession game = sessionManager.getGameSession(sessionId);
             if (game == null) {
                 throw new SplendorException("There is no session associated this session ID: " + sessionId + ".");
             }
-
-            // taken before the hash comparison in getStringResult, so a move right after it still wakes this poll
-            ContentWatcher watcher = watcherFor(sessionId).forOnePoll();
-            // serialize game (under the session lock, so that an action cannot change it halfway)
-            Fetcher fetcher = () -> {
-                synchronized (game) {
-                    return SplendorTypeAdapter.newClientGson().toJson(game.getGame());
-                }
-            };
-
-            return ResultGenerator.getStringResult(watcher, fetcher, hash, this.longPollTimeout);
+            return watcherFor(sessionId, game).poll(hash);
         } catch (SplendorException e) {
-            DeferredResult result = new DeferredResult();
+            DeferredResult<ResponseEntity<String>> result = new DeferredResult<>();
             result.setResult(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage()));
             return result;
         } catch (Exception e) {
-            // Something went wrong. Send a http-400 and pass the exception message as body payload.
             logger.warn("Issue while getting game state: ", e);
-            DeferredResult result = new DeferredResult();
+            DeferredResult<ResponseEntity<String>> result = new DeferredResult<>();
             result.setResult(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Server could not retrieve game state."));
             return result;
@@ -384,14 +396,10 @@ public class SplendorRestController {
             }
 
             // mark that the game state has changed, before the (slow, fallible) lobby service call
-            watcherFor(sessionId).markDirty();
+            watcherFor(sessionId, session).markDirty();
 
             if (gameEnded) {
-                try {
-                    initializer.deleteGameSession(sessionId);
-                } catch (Exception e) {
-                    logger.warn("Game " + sessionId + " ended, but the lobby service session could not be deleted: ", e);
-                }
+                deleteLobbySession(sessionId);
             }
             return ResponseEntity.status(HttpStatus.OK).body("");
         } catch (SplendorException e) {
@@ -400,6 +408,26 @@ public class SplendorRestController {
             logger.warn("Issue while executing action: ", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Server ran into an issue while executing an action.");
+        }
+    }
+
+    /**
+     * Delete a finished game's session from the lobby service. A failure is only logged: the game is
+     * over either way. The REST client does not throw on an error status (see
+     * {@link EmptyRestTemplateErrorHandler}), so a refusal comes back as a response and is checked here.
+     *
+     * @param sessionId session id
+     */
+    private void deleteLobbySession(String sessionId) {
+        try {
+            ResponseEntity<?> response = initializer.deleteGameSession(sessionId);
+            if (response == null || !response.getStatusCode().is2xxSuccessful()) {
+                logger.warn("Game {} ended, but the lobby service refused to delete its session: {} {}", sessionId,
+                        response == null ? "no response" : response.getStatusCodeValue(),
+                        response == null ? "" : String.valueOf(response.getBody()));
+            }
+        } catch (Exception e) {
+            logger.warn("Game " + sessionId + " ended, but the lobby service session could not be deleted: ", e);
         }
     }
 
@@ -446,7 +474,7 @@ public class SplendorRestController {
             logger.info("Restarted game session: " + sessionId);
 
             // game has updated
-            watcherFor(sessionId).markDirty();
+            watcherFor(sessionId, gameSession).markDirty();
 
             return ResponseEntity.status(HttpStatus.OK).body("");
         } catch (SplendorException e) {

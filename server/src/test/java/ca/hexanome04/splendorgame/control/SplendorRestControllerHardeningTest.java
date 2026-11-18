@@ -3,6 +3,10 @@ package ca.hexanome04.splendorgame.control;
 import static ca.hexanome04.splendorgame.model.gameversions.GameVersions.BASE_ORIENT;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import ca.hexanome04.splendorgame.control.templates.LaunchSessionInfo;
 import ca.hexanome04.splendorgame.control.templates.PlayerInfo;
 import ca.hexanome04.splendorgame.model.Player;
@@ -19,11 +23,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.context.request.async.DeferredResult;
@@ -139,6 +143,43 @@ public class SplendorRestControllerHardeningTest {
         assertThat(game().getWinner()).extracting(Player::getName).containsExactly("p1");
     }
 
+    private List<ILoggingEvent> warningsDuring(Runnable run) {
+        Logger log = (Logger) LoggerFactory.getLogger(SplendorRestController.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        log.addAppender(appender);
+        try {
+            run.run();
+        } finally {
+            log.detachAppender(appender);
+        }
+        return appender.list.stream().filter(e -> e.getLevel() == Level.WARN).toList();
+    }
+
+    @Test
+    @DisplayName("A lobby service that refuses to delete the finished session is logged with its answer")
+    void testLobbyRefusalIsLogged() {
+        // the LS's REST client does not throw on an error status, it hands back the response
+        Mockito.when(initializer.deleteGameSession(SESSION)).thenReturn(
+                ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("{\"error\":\"invalid_token\"}"));
+
+        List<ILoggingEvent> warnings = warningsDuring(this::playToGameOver);
+
+        assertThat(warnings).anySatisfy(e -> assertThat(e.getFormattedMessage())
+                .contains(SESSION, "refused", "401", "invalid_token"));
+        assertThat(game().getWinner()).extracting(Player::getName).containsExactly("p1");
+    }
+
+    @Test
+    @DisplayName("A lobby service that deletes the finished session causes no warning")
+    void testLobbyDeleteOkIsNotLogged() {
+        Mockito.when(initializer.deleteGameSession(SESSION)).thenReturn(ResponseEntity.ok().build());
+
+        List<ILoggingEvent> warnings = warningsDuring(this::playToGameOver);
+
+        assertThat(warnings).noneSatisfy(e -> assertThat(e.getFormattedMessage()).contains("lobby service"));
+    }
+
     @Test
     @DisplayName("After game over the actions endpoint answers an empty list and new actions are refused")
     void testActionsAfterGameOver() {
@@ -162,7 +203,7 @@ public class SplendorRestControllerHardeningTest {
         assertThat(put("token-p1", "p1", Actions.TAKE_TOKEN, PASS).getStatusCode()).isEqualTo(HttpStatus.OK);
 
         ResponseEntity<?> now = (ResponseEntity<?>) controller.getGameState(SESSION, null).getResult();
-        String hash = DigestUtils.md5Hex((String) now.getBody());
+        String hash = GameStateWatcher.hashOf((String) now.getBody());
         DeferredResult<?> waiting = controller.getGameState(SESSION, hash);
         assertThat(waiting.hasResult()).isFalse();
 

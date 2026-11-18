@@ -258,6 +258,35 @@ TAKE_EXTRA_TOKEN_AFTER_PURCHASE_POWER  {"takeToken": "Red", "putBackToken": "Blu
 `BUY_CARD` needs `tokens`, even when it is empty (`{}`). Amounts must be whole
 numbers.
 
+## The game state long-poll
+
+`GET /api/sessions/{sessionId}` returns the game state as JSON. With
+`?hash=<MD5 of the state the client shows>` it is a long-poll. The MD5 is the
+lower-case hex digest of the state's UTF-8 bytes.
+
+- If the hash is missing or differs from the current state's, the server
+  answers 200 with the state at once.
+- Otherwise it holds the request. The next change of the game (an action or a
+  restart) answers it with 200 and the new state. After `longpoll.timeout`
+  (30 s by default) it answers 204 with "No update.".
+- A held poll takes no thread. `GameStateWatcher` keeps the held Spring
+  `DeferredResult`s of each game, and a change answers them. The simpoll
+  library used before started a thread per held poll, and that thread slept
+  until the timeout even after the client had gone. Session ids are public,
+  so anyone could hold thousands of polls and exhaust the server's threads.
+- At most `longpoll.maxHeldPerGame` polls (64 by default) are held per game.
+  One more answers the oldest held poll with 204, as a timeout would, and the
+  client behind it polls again. A flood of polls on one game therefore costs
+  a bounded amount of memory. It pushes real players' polls out, but never
+  refuses them.
+- An unknown session gets 400.
+
+`GameStateWatcherTest` covers the hash rules, a move that lands between the
+hash comparison and the hold, the cap and the absence of threads.
+`GameStateLongPollHttpTest` holds polls through the embedded Tomcat and checks
+the 204 timeout, the thread count, and that polls of clients that went away
+are dropped after the timeout.
+
 ## Reproducible deals
 
 The Spring property `gs.shuffleSeed` seeds the shuffles of every new game. It
