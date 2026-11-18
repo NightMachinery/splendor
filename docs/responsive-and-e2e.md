@@ -5,6 +5,11 @@ The top bar shows whose turn it is. During a move, tap **View board** to read
 the board and history, then **Return to action** to pick up the same choice.
 The history drawer opens at a readable width and scrolls independently.
 
+Tap a face-up development card or one of your reserved cards to inspect
+its art, costs, bonuses and effects. Purchase, reserve and cascade choices
+show the selected card's details before confirmation. Purchase details show
+what remains after your gem bonuses when they reduce the printed cost.
+
 The entry pages use the device's viewport. In the lobby, **Create Session**
 opens a tap and keyboard accessible game picker. A new session is ready to
 launch when a second player joins.

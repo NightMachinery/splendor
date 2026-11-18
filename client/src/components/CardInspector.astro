@@ -1,0 +1,16 @@
+---
+import "../styles/card-details.css";
+---
+
+<dialog id="card-inspector" aria-labelledby="card-inspector-title">
+    <header>
+        <h2 id="card-inspector-title">Card details</h2>
+        <form method="dialog">
+            <button class="sp-btn sp-btn-secondary" autofocus>Close</button>
+        </form>
+    </header>
+    <div class="card-inspector-content">
+        <img alt="" decoding="async" />
+        <div class="card-readout" data-card-readout="inspect"></div>
+    </div>
+</dialog>

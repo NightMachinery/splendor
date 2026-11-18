@@ -6,6 +6,7 @@ import { writeUpdate } from "./history";
 import { runDelayed } from "./animation/utils";
 import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
+import { setCardDetailsState, setCardInspectTarget } from "./card-details.js";
 
 import { md5Hex } from "./local-md5.js";
 import {
@@ -147,6 +148,7 @@ const updateTierRow = (selector, devCardsDeck, orientCardsDeck) => {
         // add additional info
         freeCardElm.setAttribute("card-id", cardId);
         freeCardElm.setAttribute("cost", JSON.stringify(cost));
+        setCardInspectTarget(freeCardElm, cardInfo);
 
         if(animationsSuspended()) {
             imgElm.classList.remove("invisible");
@@ -172,6 +174,7 @@ const updateTierRow = (selector, devCardsDeck, orientCardsDeck) => {
             const oldElm = row.querySelector(`${selector} ${cardSelector}[card-id="${cid}"]`);
             oldElm.removeAttribute("card-id");
             oldElm.removeAttribute("cost");
+            setCardInspectTarget(oldElm, null);
             oldElm.querySelector("img").removeAttribute("src");
         });
 
@@ -283,6 +286,9 @@ const updateMainPlayerInfo = (playerInfo) => {
     // UPDATE RESERVED CARDS IN PLAYER INVENTORY
     updateCards(playerInfo.reservedCards, playerInv, ".player-inventory-reservedcards",
                 ".player-inventory-card-reserved", "development-cards", "#player-inventory-reserved-card-template");
+    for (const node of playerInv.querySelectorAll(".player-inventory-card-reserved[card-id]")) {
+        setCardInspectTarget(node, playerInfo.reservedCards.find((card) => card.id === node.getAttribute("card-id")));
+    }
 
     // Update nobles
     updateCards(playerInfo.nobleCards, playerInv, ".player-inventory-nobles",
@@ -462,6 +468,7 @@ const renderGameState = (data, hash) => {
     furtherUpdates.forEach((func) => func(data));
 
     const currentPlayer = data.players[data.turnCounter];
+    setCardDetailsState(data, curUsername);
     updateTurnStatus(data);
     if(data.gameOver) {
         verifyNoModals();

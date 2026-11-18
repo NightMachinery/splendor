@@ -1,4 +1,5 @@
-import { showNextModal, setupSelection, backButton } from "./modals.js";
+import { showNextModal, setupDevelopmentCardSelection, backButton } from "./modals.js";
+import { showCardReadout } from "../card-details.js";
 import { performAction } from "../actions";
 import { showError } from "../notify.js";
 
@@ -142,7 +143,7 @@ const showPurchasableDevCards = () => {
 
     const cardsSelectionSelector = "#buy-card-modal .board-card-dev";
 
-    setupSelection(cardsSelectionSelector);
+    setupDevelopmentCardSelection("#buy-card-modal", ".board-card-dev");
 
     document.querySelector("#buy-card-modal #buy-card-confirm-btn").onclick = () => {
         const selectedCard = document.querySelector(`${cardsSelectionSelector}.selected`);
@@ -168,6 +169,7 @@ const showPayment = (cardNode) => {
     // show card in purchase window
     const imgSrc = `/images/development-cards/${cardId}.jpg`;
     document.querySelector("#dev-card-payment-modal .purchase-show-card img").setAttribute("src", imgSrc);
+    showCardReadout(document.getElementById("dev-card-payment-modal"), cardId);
 
     // clear previous numbers
     document.querySelectorAll("#dev-card-payment-modal board-token").forEach(elm => {
@@ -230,7 +232,7 @@ const showReservableDevCards = () => {
 
     const cardsSelectionSelector = "#reserve-card-modal .modal-board-cards .board-card-dev";
 
-    setupSelection(cardsSelectionSelector);
+    setupDevelopmentCardSelection("#reserve-card-modal", ".modal-board-cards .board-card-dev");
 
     confirmBtn.onclick = () => {
         confirmBtn.disabled = true;

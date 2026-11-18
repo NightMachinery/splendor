@@ -69,6 +69,7 @@ test.describe.parallel("Test orient modals", () => {
         const requestPromise = checkActionRequest(page, Actions.CASCADE_1);
 
         await allCards[0].click(); // select first
+        await expect(cascadeModal.locator(".card-readout")).toContainText("Free as a cascade choice.");
         await cascadeModal.getByText("CONFIRM").click();
         const request = await requestPromise;
         const jsonData = request.postDataJSON();

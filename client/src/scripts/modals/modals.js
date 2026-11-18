@@ -3,14 +3,16 @@ import { showExtraTokens } from "./extratoken.js";
 import { initReserveNoble, initChooseNoble } from "./nobles.js";
 import { showSatchelBonuses } from "./satchel.js";
 import { initChooseCity } from "./cities.js";
+import { labelCardChoice, showCardReadout } from "../card-details.js";
 
 /**
  * Setup a selection for selectable items.
  * 
  * @param {*} selector selector for all selectable items 
  * @param {*} selectedSelector selector for when item is selected
+ * @param {Function} [onSelection] receive the selected element, or null when cleared
  */
-export const setupSelection = (selector, selectedSelector) => {
+export const setupSelection = (selector, selectedSelector, onSelection) => {
     const selectedClass = selectedSelector ? selectedSelector : "selected";
     // remove selection
     const oldSelected = document.querySelector(`${selector}.${selectedClass}`);
@@ -28,9 +30,29 @@ export const setupSelection = (selector, selectedSelector) => {
             if(selectedExtraToken !== elm) {
                 elm.classList.add(selectedClass);
             }
+            onSelection?.(selectedExtraToken === elm ? null : elm, selectedExtraToken);
         };
     });
 };
+
+export function setupDevelopmentCardSelection(modalSelector, cardSelector) {
+    const modal = document.querySelector(modalSelector);
+    const selector = `${modalSelector} ${cardSelector}[card-id]`;
+    showCardReadout(modal, null);
+    for (const card of document.querySelectorAll(selector)) {
+        labelCardChoice(card);
+        card.onkeydown = (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            if (!event.repeat) card.click();
+        };
+    }
+    setupSelection(selector, "selected", (selected, previous) => {
+        previous?.setAttribute("aria-pressed", "false");
+        selected?.setAttribute("aria-pressed", "true");
+        showCardReadout(modal, selected?.getAttribute("card-id"));
+    });
+}
 
 /**
  * Attempts to perform a follow up action if required.

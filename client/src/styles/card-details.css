@@ -1,0 +1,122 @@
+#card-inspector {
+  box-sizing: border-box;
+  inline-size: min(34rem, calc(100% - 1.5rem));
+  max-block-size: calc(var(--sp-vh) - var(--sp-safe-t) - var(--sp-safe-b) - 1.5rem);
+  margin: auto;
+  padding: clamp(0.75rem, 3vw, 1.25rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--sp-gold);
+  border-radius: var(--sp-r-3);
+  background: var(--sp-surface-1);
+  color: var(--sp-text);
+  font-family: var(--sp-font-ui);
+}
+
+#card-inspector::backdrop {
+  background: var(--sp-scrim);
+}
+
+#card-inspector header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-space-2);
+  margin-block-end: var(--sp-space-3);
+}
+
+#card-inspector h2 {
+  margin: 0;
+  font-size: var(--sp-fs-lg);
+}
+
+.card-inspector-content {
+  display: grid;
+  grid-template-columns: minmax(4rem, 27%) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--sp-space-3);
+}
+
+.card-inspector-content img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  border-radius: var(--sp-r-1);
+}
+
+.card-readout {
+  display: grid;
+  gap: var(--sp-space-2);
+  color: var(--sp-text);
+  font: 400 var(--sp-fs-sm) / 1.45 var(--sp-font-ui);
+  text-align: start;
+}
+
+.card-readout:empty {
+  display: none;
+}
+
+.modal-content .card-readout {
+  box-sizing: border-box;
+  width: min(100%, 34rem);
+  margin-block: var(--sp-space-2);
+  padding: var(--sp-space-3);
+  border: 1px solid var(--sp-line);
+  border-radius: var(--sp-r-2);
+  background: var(--sp-surface-1);
+}
+
+.card-readout-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-space-1) var(--sp-space-2);
+}
+
+.card-readout-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-space-1);
+  padding: 0 var(--sp-space-1);
+  border-radius: var(--sp-r-1);
+  background: var(--sp-surface-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-readout-cost::before {
+  content: "";
+  inline-size: 0.65em;
+  block-size: 0.65em;
+  border-radius: 50%;
+  background: var(--sp-color);
+}
+
+.card-readout-effects {
+  margin: 0;
+  padding-inline-start: 1.1em;
+  list-style: disc;
+}
+
+[data-card-readout] .card-readout-effects li + li {
+  margin-block-start: var(--sp-space-1);
+}
+
+.modal .board-card-dev[aria-pressed] {
+  min-inline-size: var(--sp-tap);
+  min-block-size: var(--sp-tap);
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+[data-card-inspect] {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+@media (max-width: 900px) {
+  #buy-card-board,
+  .reserve-card-board {
+    padding-inline: 0;
+  }
+}

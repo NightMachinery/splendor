@@ -1,4 +1,4 @@
-import { setupSelection } from "./modals.js";
+import { setupDevelopmentCardSelection } from "./modals.js";
 import { performAction } from "../actions";
 import { showError } from "../notify.js";
 
@@ -24,17 +24,16 @@ export const showCascadeCards = (tier) => {
 
     const cardsSelectionSelector = "#cascade-modal .modal-board-cards .board-card-dev";
 
-    setupSelection(cardsSelectionSelector);
+    setupDevelopmentCardSelection("#cascade-modal", ".modal-board-cards .board-card-dev");
 
     confirmBtn.onclick = () => {
-        confirmBtn.disabled = true;
-
         const selectedCard = document.querySelector(`${cardsSelectionSelector}.selected`);
         if(!selectedCard) {
             // no card has been selected, error
             showError("You have not selected a card!");
             return;
         }
+        confirmBtn.disabled = true;
 
         const dataCallback = () => {
             return { "cardId": selectedCard.getAttribute("card-id") };
