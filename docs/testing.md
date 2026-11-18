@@ -231,8 +231,9 @@ Specs:
 - `tests/e2e/two-player-lobby.spec.ts` starts with two fresh browser sessions.
   The phone host creates an Orient room and launches it as soon as the
   desktop guest joins. Both enter the board and take one turn through the
-  dialogs. The test checks that each seat sees one opponent and that the
-  server started with four tokens per ordinary color.
+  dialogs. The test checks both tab titles at each turn change, verifies that
+  each seat sees one opponent, and checks that the server started with four
+  tokens per ordinary color.
 
 Every game attaches `moves.log`; a failed one also attaches `state.json`,
 `state-before.json` and a screenshot.

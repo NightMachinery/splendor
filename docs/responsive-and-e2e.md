@@ -1,8 +1,9 @@
 # Responsive board and E2E workflow
 
 On a narrow screen the board, your inventory and opponents stack vertically.
-The top bar shows whose turn it is. During a move, tap **View board** to read
-the board and history, then **Return to action** to pick up the same choice.
+The top bar and browser tab title show whose turn it is. The title updates
+while the game tab is in the background. During a move, tap **View board** to
+read the board and history, then **Return to action** to pick up the same choice.
 The history drawer scrolls independently and follows the latest turn until
 you scroll back. New moves keep your place while you read earlier turns.
 Select **Latest turn** to return to the newest entry and follow new moves again.

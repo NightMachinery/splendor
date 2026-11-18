@@ -82,10 +82,19 @@ test("a phone host invites a desktop guest and both can play", async ({ api, bro
         expect(state.tokens.Red).toBe(4);
 
         const turn = state.players[state.turnCounter].name;
-        const players = [{ page: host, username: hostUser, touch: true }, { page: guest, username: guestUser, touch: false }];
+        const players = [
+            { page: host, username: hostUser, displayName: `Host ${tag}`, touch: true },
+            { page: guest, username: guestUser, displayName: `Guest ${tag}`, touch: false },
+        ];
         const first = players.find(({ username }) => username === turn)!;
         const second = players.find(({ username }) => username !== turn)!;
-        for (const { page, username, touch } of [first, second]) {
+        const expectTurnTitles = (active: typeof first, waiting: typeof second) => Promise.all([
+            expect(active.page).toHaveTitle("Your turn | Splendor"),
+            expect(waiting.page).toHaveTitle(`${active.displayName}’s turn | Splendor`),
+        ]);
+        for (const [active, waiting] of [[first, second], [second, first]]) {
+            const { page, username, touch } = active;
+            await expectTurnTitles(active, waiting);
             await expect(page.locator("body")).toHaveAttribute("data-splendor-turn", username);
             const played = await takeTokensThroughUi(page, username, { touch })({
                 player: username,
@@ -94,6 +103,7 @@ test("a phone host invites a desktop guest and both can play", async ({ api, bro
             expect(played).toBe(true);
         }
         await Promise.all([host, guest].map((page) => expect(page.locator("body")).toHaveAttribute("data-splendor-turn", first.username)));
+        await expectTurnTitles(first, second);
         expect((await api.getState(sessionId)).tokens.Red).toBe(2);
 
         await guest.goto("/lobby/?invite=-1");

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { lobbySession } from "./util/backend-mock.js";
 import { mockGetUsername } from "./util/ls-mock.js";
 import { mockGameState } from "./util/server-mock.js";
-import { createBasicGame, realCard, TokenType } from "./util/game.js";
+import { createBasicGame, createCitiesGame, createTradingPostsGame, realCard, TokenType } from "./util/game.js";
 import { takeTokensThroughUi } from "./e2e/lib/ui-actor.js";
 
 // The full-stack rendered game (tests/e2e/rendered-game.spec.ts) plays some
@@ -115,6 +115,7 @@ test("history follows the board's display names through alias changes and a tie"
     });
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(turn).toHaveText("Avery & Jules’s turn");
+    await expect(page).toHaveTitle("Avery & Jules’s turn | Splendor");
     await expect(headings).toHaveText(["Avery & Jules’s turn"]);
 
     backend.setGame(game.setTurnCounter(1));
@@ -124,8 +125,31 @@ test("history follows the board's display names through alias changes and a tie"
 
     backend.setGame(game.finish("linus", "maex"));
     await expect(page.locator("#gameover-modal .winners-text")).toHaveText("Avery & Jules and Mina <Pilot> tied as winners of the game!");
+    await expect(page).toHaveTitle("Game over | Splendor");
     await expect(headings).toHaveText([...turns, "The game has ended.", "🎉 Avery & Jules and Mina <Pilot> are the winners! 🎉"]);
 });
+
+for (const [path, variant, makeGame] of [
+    ["gameboard-cities", "Splendor Cities", createCitiesGame],
+    ["gameboard-tradingposts", "Splendor Trading Posts", createTradingPostsGame],
+] as const) {
+    test(`the ${variant} tab announces your turn while the page is hidden`, async ({ page }) => {
+        const game = makeGame();
+        const backend = await mockGameState(page, game);
+        await mockGetUsername(page, "maex");
+        await page.goto(`/${path}/?sessionId=123`);
+        await expect(page).toHaveTitle(`linus’s turn | ${variant}`);
+
+        await page.evaluate(() => {
+            Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+            Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+            document.dispatchEvent(new Event("visibilitychange"));
+        });
+        backend.setGame(game.setTurnCounter(1));
+        await expect(page).toHaveTitle(`Your turn | ${variant}`);
+        expect(await page.evaluate(() => document.hidden)).toBe(true);
+    });
+}
 
 test("history spells out gems taken, returned, and assigned to a satchel", async ({ page, isMobile }) => {
     if (isMobile) await page.setViewportSize({ width: 320, height: 650 });

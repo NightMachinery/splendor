@@ -17,6 +17,7 @@ import {
 
 let currentLobbySession = null;
 const displayNameFor = (username) => playerAlias(currentLobbySession, username);
+const boardTitle = document.title;
 
 const getSessionId = () => (new URL(document.location)).searchParams.get("sessionId");
 
@@ -44,6 +45,8 @@ const updateTurnStatus = (state) => {
         ? "Your turn"
         : `${displayNameFor(name)}’s turn`;
     if(status && status.textContent !== text) status.textContent = text;
+    const title = text ? `${text} | ${boardTitle}` : boardTitle;
+    if(document.title !== title) document.title = title;
 };
 
 /**
