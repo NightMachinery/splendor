@@ -12,7 +12,10 @@ An online multiplayer web-based implementation of the strategy game Splendor, ad
 
 ## Responsive UI and live E2E
 
-The board supports desktop, tablet, and portrait-phone layouts. On mobile the board stacks vertically and should avoid page-level horizontal scrolling. See [docs/responsive-and-e2e.md](docs/responsive-and-e2e.md) for the responsive CSS structure, full-stack Playwright workflow, and Chrome CDP screenshot/probe helper.
+Play with **2 to 4 players** from a desktop, tablet or phone. Create a session
+in the lobby, have the other players join, then launch. During a turn, use
+**View board** to check the table before returning to your action.
+[Responsive layout and browser testing](docs/responsive-and-e2e.md)
 
 ## Getting Started
 

@@ -2,7 +2,7 @@
 .modal {
   display: none;
   position: fixed;
-  z-index: 1;
+  z-index: var(--z-sheet);
   left: 0;
   top: 0;
   width: 100%;
@@ -19,11 +19,32 @@
   min-height: 60%;
 }
 
-.dropdown-btn {
-  position: absolute;
-  top: 1.5em;
-  right: 1.5em;
-  z-index: 4;
+.board-preview-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.4rem;
+}
+
+.modal .preview-close,
+.modal.is-previewing .preview-open,
+.modal.is-previewing .modal-content {
+  display: none;
+}
+
+.modal.is-previewing {
+  background: transparent;
+  pointer-events: none;
+}
+
+.modal.is-previewing .board-preview-toolbar {
+  position: fixed;
+  top: 3.75rem;
+  right: max(0.75rem, var(--sp-safe-r));
+  pointer-events: auto;
+}
+
+.modal.is-previewing .preview-close {
+  display: inline;
 }
 
 /* Removes invisible if present (used for animation purposes and should not take effect here) */
@@ -38,19 +59,6 @@
 
 .modal.show {
   display: flex;
-}
-
-.dropdown-btn {
-  transition: opacity 0.2s;
-  opacity: 1;
-}
-
-.dropdown-btn:hover {
-  opacity: 0.5;
-}
-
-.dropdown-btn:hover + .modal-content {
-  opacity: 0.01;
 }
 
 /* Modal Content */
@@ -401,13 +409,6 @@
   margin-bottom: 2.5em;
 }
 
-.modal-icon {
-  height: 2em;
-  aspect-ratio: 1 / 1;
-  color: goldenrod;
-  cursor: pointer;
-}
-
 /* Responsive modal layout ---------------------------------------------------- */
 @media (width <= 900px), (height <= 700px) {
   .modal {
@@ -421,6 +422,10 @@
     max-height: calc(100dvh - 1.5rem);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .modal.is-previewing .modal-container {
+    overflow: visible;
   }
 
   .modal-content {
@@ -471,6 +476,7 @@
   .satchel-confirm-btn,
   .extra-token-confirm-btn {
     border-radius: 0.9rem;
+    min-height: var(--sp-tap);
     font-size: clamp(0.9rem, 4.2vw, 1.15rem);
     padding: 0.65rem 0.9rem;
   }

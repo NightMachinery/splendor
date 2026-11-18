@@ -11,12 +11,15 @@ const { title } = Astro.props;
     <span><p class="quit"> QUIT </p></span>
 </div>
 <div id="top-menu-bar" class="top-menu-bar">
-    <div id="menu-icon" class="menu-icon">
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
+    <button id="menu-icon" class="menu-icon" type="button" aria-label="Open game menu">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+    </button>
+    <div class="top-menu-heading">
+        <p id="top-menu-title" class="top-menu-title">{title}</p>
+        <p id="game-turn-status" class="game-turn-status" role="status"></p>
     </div>
-    <p id="top-menu-title" class="top-menu-title">{title}</p>
 </div>
 <RestartGameModal></RestartGameModal>
 <SaveGameModal></SaveGameModal>

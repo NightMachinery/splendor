@@ -2,10 +2,10 @@
 import "../styles/history.css";
 ---
 <div id="history">
-    <div class="drawer-opener">
-        <p>History</p>
-    </div>
-    <div class="drawer"></div>
+    <button type="button" class="drawer-opener" aria-expanded="false" aria-controls="history-events">
+        <span>History</span>
+    </button>
+    <div class="drawer" id="history-events"></div>
 
     <template id="history-token-template">
         <div class="token-change">
@@ -54,6 +54,10 @@ import "../styles/history.css";
         transform: translateY(0);
     }
 
+    #history:not(.opened) {
+        pointer-events: none;
+    }
+
     .drawer-opener {
         background: linear-gradient( to top, rgb(0 2 6), rgb(11 19 33), rgb(35 52 84) );
         display: flex;
@@ -64,9 +68,10 @@ import "../styles/history.css";
         min-height: var(--opener-height);
         border-radius: var(--border-size) var(--border-size) 0 0;
         cursor: pointer;
+        pointer-events: auto;
     }
 
-    .drawer-opener p {
+    .drawer-opener span {
         font-size: 1.5em;
         font-weight: 800;
         letter-spacing: 0.1rem;
@@ -87,15 +92,37 @@ import "../styles/history.css";
         padding: 2%;
         gap: 1em;
     }
+
+    #history:not(.opened) .drawer {
+        visibility: hidden;
+    }
+
+    @media (max-width: 900px) {
+        #history {
+            left: auto;
+            right: 0.5rem;
+            width: min(28rem, calc(100% - 1rem));
+            border: 0;
+            box-shadow: none;
+        }
+
+        .drawer-opener {
+            align-self: flex-end;
+            padding-inline: 1rem;
+            border: var(--border-style);
+        }
+
+        .drawer {
+            border: var(--border-style);
+            overscroll-behavior: contain;
+        }
+    }
 </style>
 <script>
     const drawer = document.querySelector("#history");
-    document.querySelector("#history .drawer-opener").addEventListener("click", () => {
-        if(drawer.classList.contains("opened")) {
-            drawer.classList.remove("opened");
-        } else {
-            drawer.classList.add("opened");
-        }
+    const toggle = document.querySelector("#history .drawer-opener");
+    toggle?.addEventListener("click", () => {
+        toggle.setAttribute("aria-expanded", String(drawer?.classList.toggle("opened")));
     });
 </script>
 <script src="../scripts/history.js"></script>

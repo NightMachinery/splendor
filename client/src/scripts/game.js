@@ -33,6 +33,15 @@ const animationsSuspended = () => typeof document !== "undefined" && document.hi
 const isLobbySession = (data) => !!data && typeof data === "object"
     && typeof data.creator === "string" && Array.isArray(data.players) && !!data.gameParameters;
 
+const updateTurnStatus = (state) => {
+    const name = state.players[state.turnCounter]?.name;
+    const status = document.querySelector("#game-turn-status");
+    const text = state.gameOver ? "Game over" : !name ? "" : name === SETTINGS.getUsername()
+        ? "Your turn"
+        : `${playerAlias(currentLobbySession, name)}’s turn`;
+    if(status && status.textContent !== text) status.textContent = text;
+};
+
 /**
  * One-shot fetch of the lobby session (aliases, observers, moderators).
  * Never throws; keeps the previous value on any failure.
@@ -56,6 +65,7 @@ const fetchLobbySession = async (sessionId) => {
 
 const refreshGameModerationChrome = (state = currentState) => {
     if(!state || !currentLobbySession) return;
+    updateTurnStatus(state);
     const sessionId = (new URL(document.location)).searchParams.get("sessionId");
     state.players.forEach((playerInfo) => {
         const pNode = document.querySelector(`.other-players .other-player[pname="${playerInfo.name}"]`);
@@ -333,6 +343,7 @@ const updateOtherPlayerInfo = (pInfo) => {
     let badges = pNode.querySelector(".game-player-badges");
     if(!badges) {
         badges = document.createElement("div");
+        badges.className = "game-player-badges";
         pNode.querySelector(".other-player-profile").appendChild(badges);
     }
     renderPlayerBadges(badges, currentLobbySession, pInfo.name, "game-player-badge");
@@ -340,6 +351,7 @@ const updateOtherPlayerInfo = (pInfo) => {
     let controls = pNode.querySelector(".game-player-mod-controls");
     if(!controls) {
         controls = document.createElement("div");
+        controls.className = "game-player-mod-controls";
         pNode.querySelector(".other-player-profile").appendChild(controls);
     }
     const sessionId = (new URL(document.location)).searchParams.get("sessionId");
@@ -450,9 +462,10 @@ const renderGameState = (data, hash) => {
     furtherUpdates.forEach((func) => func(data));
 
     const currentPlayer = data.players[data.turnCounter];
+    updateTurnStatus(data);
     if(data.gameOver) {
         verifyNoModals();
-        initGameOver(data);
+        initGameOver(data, (name) => playerAlias(currentLobbySession, name));
         showNextModal("#gameover-modal");
     } else if(currentPlayer && currentPlayer.name === curUsername) {
         // it's your turn

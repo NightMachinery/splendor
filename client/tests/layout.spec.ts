@@ -10,13 +10,6 @@ import {
 // Layout checks: nothing may stick out past the viewport edges, and controls
 // in an open modal must not be covered by other elements.
 //
-// The responsive redesign is a later phase, so some of these fail today on
-// phones. Those page/viewport pairs are listed in KNOWN_DEBT: they still run,
-// and a failure there is recorded as an expected failure with a
-// "known-layout-debt" annotation instead of turning the suite red. Any page
-// NOT listed must pass. PW_LAYOUT_STRICT=1 makes every check a hard failure.
-// docs/testing.md lists the current failures.
-
 type PageCase = {
     name: string;
     path: string;
@@ -26,7 +19,7 @@ type PageCase = {
     desktopIgnore?: string[];
 };
 
-// Above 700px the opponents' inventories are a hover slide-out: a tab peeks in
+// Above 900px the opponents' inventories are a hover slide-out: a tab peeks in
 // at the right edge and the rest waits off-screen by design.
 const OPPONENT_DRAWER = ["#other-players .other-player-container"];
 
@@ -91,23 +84,6 @@ const PAGES: PageCase[] = [
     },
 ];
 
-// "<page>@<viewport>" pairs known to fail today. viewport is "mobile" (the
-// project's phone), "small" (360x740) or "desktop". Keep this list honest:
-// a pair that starts passing should be removed.
-const KNOWN_DEBT = new Set<string>([
-    // The sessions table is ~1400px wide at a 1280px desktop viewport
-    // (.session-player-panel min-width plus the open details panel).
-    "lobby@desktop",
-    // index.astro and login.astro have no <meta name="viewport">, so phones
-    // render them 980px wide and scaled down.
-    "title@mobile", "title@small", "login@mobile", "login@small",
-    // On phones the board chrome (.player-inventory, .other-players, the top
-    // bar, #history) is stacked above .modal (z-index 1), so it covers the
-    // modal buttons, counters and cards: taps land on the inventory instead.
-    ...["your-turn", "take-token", "put-back-token", "buy-card", "payment", "reserve-card"]
-        .flatMap((m) => [`modal-${m}@mobile`, `modal-${m}@small`]),
-]);
-
 // Playwright's WebKit cannot launch on the macOS 14 development machine, so
 // the WebKit results have never been looked at. Until someone has, a WebKit
 // failure is recorded as known debt rather than a red build.
@@ -130,7 +106,7 @@ for (const pc of PAGES) {
             await settle(page);
 
             const key = `${pc.name}@${kind}`;
-            await withKnownLayoutDebt(testInfo, KNOWN_DEBT.has(key) || unverifiedEngine(testInfo.project.name), key, async () => {
+            await withKnownLayoutDebt(testInfo, unverifiedEngine(testInfo.project.name), key, async () => {
                 const width = await page.evaluate(() => window.innerWidth);
                 if (isMobile) {
                     // Without <meta name="viewport"> a phone lays the page out
@@ -146,8 +122,8 @@ for (const pc of PAGES) {
     }
 }
 
-// Turn modals, opened by dispatching the button handlers directly (a real tap
-// may be intercepted on phones; that is what the "covered" check reports).
+// Open each turn modal independently so the geometry probe can report its
+// own controls even if a preceding dialog has a layout regression.
 type ModalCase = { name: string; modal: string; steps: string[] };
 const MODALS: ModalCase[] = [
     { name: "your-turn", modal: "#your-turn-modal", steps: [] },
@@ -176,7 +152,7 @@ for (const mc of MODALS) {
             await settle(page);
 
             const key = `modal-${mc.name}@${kind}`;
-            await withKnownLayoutDebt(testInfo, KNOWN_DEBT.has(key) || unverifiedEngine(testInfo.project.name), key, async () => {
+            await withKnownLayoutDebt(testInfo, unverifiedEngine(testInfo.project.name), key, async () => {
                 const offenders = await findHorizontalOverflow(page, { ignore: isMobile ? [] : OPPONENT_DRAWER });
                 const covered = await findCoveredControls(page, mc.modal);
                 const width = await page.evaluate(() => window.innerWidth);

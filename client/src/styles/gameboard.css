@@ -71,8 +71,13 @@ body {
 }
 
 .menu-icon {
-  justify-content: left;
-  align-items: flex-start;
+  display: grid;
+  place-content: center;
+  min-width: var(--sp-tap);
+  min-height: var(--sp-tap);
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
   margin-left: 1rem;
 }
@@ -119,11 +124,18 @@ body {
   box-shadow: 10px 0 10px -3px rgba(0 0 0 / 42%);
 }
 
+.top-menu-heading {
+  min-width: 0;
+  margin: 0 auto;
+  text-align: center;
+}
+
 .top-menu-title {
   font-size: 2.3rem;
   font-family: Judson, serif;
   font-weight: 800;
-  margin: 0 auto;
+  margin: 0;
+  line-height: 1;
   letter-spacing: 0.1rem;
   -webkit-text-stroke: 0.03rem rgb(82 55 24);
   background:
@@ -136,6 +148,15 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(2px 2px 10px black);
+}
+
+.game-turn-status {
+  margin: 0;
+  overflow: hidden;
+  color: var(--sp-text);
+  font: 600 var(--sp-fs-xs) / 1.2 var(--sp-font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* PLAYER INVENTORY */
@@ -641,7 +662,7 @@ body {
   }
 }
 
-@media (width <= 700px) {
+@media (width <= 900px) {
   html,
   body {
     min-height: 100%;
@@ -657,6 +678,10 @@ body {
     position: sticky;
     top: 0;
     height: 3rem;
+  }
+
+  .top-menu-title {
+    font-size: clamp(1.2rem, 5vw, 1.75rem);
   }
 
   .bar {

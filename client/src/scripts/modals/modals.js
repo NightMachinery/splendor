@@ -90,7 +90,7 @@ const showModal = (selector) => {
 };
 
 const closeModal = (selector) => {
-    document.querySelector(selector).classList.remove("show");
+    document.querySelector(selector).classList.remove("show", "is-previewing");
 };
 
 export const showNextModal = (selector) => {

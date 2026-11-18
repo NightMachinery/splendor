@@ -89,7 +89,7 @@
 }
   
 /* Responsive cities board additions ----------------------------------------- */
-@media (width <= 700px) {
+@media (width <= 900px) {
   .board-container {
     order: 1;
     width: 100%;

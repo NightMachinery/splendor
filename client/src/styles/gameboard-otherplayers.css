@@ -338,6 +338,8 @@
   }
 
   .game-player-mod-controls .player-action-btn {
+    min-width: var(--sp-tap);
+    min-height: var(--sp-tap);
     width: 2.2em;
     height: 2.2em;
   }

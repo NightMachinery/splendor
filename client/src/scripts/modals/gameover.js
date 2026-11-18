@@ -1,12 +1,12 @@
 import { SETTINGS } from "../settings";
 
-export const initGameOver = (data) => {
+export const initGameOver = (data, getDisplayName) => {
 
     const winnersText = document.querySelector("#gameover-modal .winners-text");
     const winners = data.winners;
-    const names = winners.map(p => p.name);
+    const names = winners.map(p => getDisplayName(p.name));
 
-    if(names.includes(SETTINGS.getUsername())) {
+    if(winners.some(p => p.name === SETTINGS.getUsername())) {
         const title = document.querySelector("#gameover-modal h1");
         title.textContent = "VICTORY";
         document.querySelector("#gameover-modal").classList.add("win");
