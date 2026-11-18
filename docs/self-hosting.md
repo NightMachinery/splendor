@@ -349,6 +349,10 @@ these properties has not been tested; if downloads fail behind a proxy, add a
 The tmux sessions inherit the tmux server's environment, so the script also
 passes `PATH` and `JAVA_HOME`, to run the same java, node and pnpm it checked.
 
+If tmux prints `command too long` when it starts a process, retry with a
+shorter `PATH` that still resolves Java, Node, pnpm, Caddy and tmux. The
+full path is one of the environment arguments sent to tmux.
+
 ## Intranet and local operation
 
 The app works over HTTP as well as HTTPS. Browser APIs such as the clipboard
