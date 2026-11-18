@@ -3,15 +3,14 @@ import { devices, type Browser, type BrowserContext, type Page, type Request, ty
 import { test, expect, stack, VERSIONS, seedFor, attachGameFailure } from "./lib/e2e.js";
 import { playGame, BOARD_PATHS, isCitiesVersion } from "./lib/bot.mjs";
 import { takeTokensThroughUi } from "./lib/ui-actor.js";
-import { findHorizontalOverflow, findCoveredControls, settle, formatOffenders, LAYOUT_STRICT, type Offender, type CoveredControl } from "../util/layout.js";
+import { findHorizontalOverflow, findCoveredControls, settle, formatOffenders, type Offender, type CoveredControl } from "../util/layout.js";
 import type { SplendorApi, User } from "./lib/splendor-api.mjs";
 
 // A whole 2-player game per version on the real stack, watched by both
 // players at once: seat 1 on a desktop browser (1280x800), seat 2 on an
 // emulated phone with touch (Pixel 7 in Chromium, iPhone 14 in WebKit).
-// The bot plays every move over the API; the boards only render and are
-// observed (the turn UI will be redesigned, so it is not driven here unless
-// E2E_UI_TURNS asks for it).
+// The bot drives the game. E2E_UI_TURNS=all plays token moves through the
+// actual dialogs by desktop click and phone tap.
 //
 // Checked on the way:
 // - after every action both boards render exactly the served state: their
@@ -30,18 +29,9 @@ import type { SplendorApi, User } from "./lib/splendor-api.mjs";
 //   winner(s), the modal names every winner, and the Lobby Service has
 //   dropped the session.
 //
-// Known debt, recorded and reported but not counted as a plain failure:
-// - layout: each seat is probed on its own turn, the first one and then
-//   every E2E_LAYOUT_EVERY turns, while its "your turn" modal is open: the
-//   elements that reach past window.innerWidth and the controls of the open
-//   modal that something else covers (the responsive redesign is the next
-//   phase). A seat that is to move but shows no open modal is a plain
-//   failure, since the probe would see nothing;
-// - whenever the DOM is compared, any other-player tab that shows a badge
-//   (OWNER, MOD, ...) or a moderation button more than once (a game.js bug,
-//   see the end of the test).
-// A finding marks the test as an expected failure, but only when every other
-// check passed. PW_LAYOUT_STRICT=1 turns it into a plain failure.
+// On each seat's turn the layout probe checks viewport overflow and covered
+// dialog controls. DOM comparisons also check for duplicate badges and
+// moderation buttons in the opponent's panel.
 //
 // Full-page screenshots of both seats at the start (the desktop seat's
 // turn), mid-game (the first phone turn from E2E_MID_TURN on) and game over
@@ -73,7 +63,6 @@ const SEAT_DEVICES: Record<string, { desktop: string; mobile: string }> = {
 const TOKEN_COLOURS = ["Red", "Blue", "Green", "White", "Brown", "Gold"] as const;
 
 const md5 = (text: string) => createHash("md5").update(text, "utf8").digest("hex");
-const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const body = (page: Page) => page.locator("body");
 
 type Seat = {
@@ -279,7 +268,10 @@ for (const version of VERSIONS) {
             await idleWindow(seats, "start", idleNotes);
 
             const uiSeats = UI_TURNS === "off" ? [] : UI_TURNS === "desktop" ? [desktop] : seats;
-            const drivers = uiSeats.map((s) => takeTokensThroughUi(s.page, s.user.username, { force: UI_TURNS === "force" }));
+            const drivers = uiSeats.map((s) => takeTokensThroughUi(s.page, s.user.username, {
+                force: UI_TURNS === "force",
+                touch: s === mobile && devices[names.mobile].hasTouch,
+            }));
             const actor = drivers.length ? async (info: any) => {
                 for (const drive of drivers) if (await drive(info)) return true;
                 return false;
@@ -340,22 +332,12 @@ for (const version of VERSIONS) {
                 await expect(modal, `the ${seat.label} seat shows the game-over modal`).toBeVisible({ timeout: 15_000 });
                 const won = result.winners.includes(seat.user.username);
                 await expect(modal.locator("h1"), `the ${seat.label} seat ${won ? "won" : "lost"}`).toHaveText(won ? "VICTORY" : "GAME OVER");
-                // Today the modal names winners by username (gameover.js shows
-                // p.name); the redesign is to show display names. Accept either
-                // and record which one, so the change shows up without breaking this.
                 const winnersText = modal.locator(".winners-text");
                 for (const winner of result.winners) {
                     const displayName = users.find((u) => u.username === winner)?.displayName;
-                    const names = [displayName, winner].filter((n): n is string => !!n);
-                    await expect(winnersText, `the ${seat.label} seat's game-over modal names the winner ${names.join(" or ")}`)
-                        .toContainText(new RegExp(names.map(escapeRegExp).join("|")));
+                    await expect(winnersText, `the ${seat.label} seat's game-over modal names the winner`)
+                        .toContainText(displayName ?? winner);
                 }
-                const shown = (await winnersText.textContent()) ?? "";
-                const byDisplayName = result.winners.every((w) => {
-                    const d = users.find((u) => u.username === w)?.displayName;
-                    return !!d && d !== w && shown.includes(d);
-                });
-                testInfo.annotations.push({ type: "gameover-names", description: `${seat.label} seat: winners shown by ${byDisplayName ? "display name" : "username"} ("${shown.trim()}")` });
             }
             await screenshotSeats(seats, testInfo, "game-over", shots);
             // live: false, a finished board may stop polling
@@ -391,14 +373,6 @@ for (const version of VERSIONS) {
             expect.soft(unexpected.map((p) => `${p.text}${p.url ? ` (${p.url})` : ""}`), `errors on the ${seat.label} seat`).toEqual([]);
         }
 
-        // Known debt last: it may turn this test into an expected failure,
-        // which must never hide a real failure above. Two kinds:
-        // - layout: a board overflows the viewport, or something covers the
-        //   controls of its open turn modal (the responsive redesign is next);
-        // - duplicate badges: an other-player tab shows a badge (OWNER, MOD,
-        //   ...) or a moderation button more than once, because game.js
-        //   appends a new badge row and a new button row on every render
-        //   (updateOtherPlayerInfo looks the rows up by classes it never sets).
         const report = layout.map((l) => [
             `${l.seat} seat, turn ${l.turn}:`,
             ...(l.overflow.length ? ["  past window.innerWidth:", formatOffenders(l.overflow)] : []),
@@ -411,14 +385,7 @@ for (const version of VERSIONS) {
         if (badgeDebt.length) {
             testInfo.annotations.push({ type: "duplicate-badges", description: badgeDebt.slice(0, 6).join("\n") + (badgeDebt.length > 6 ? `\n(${badgeDebt.length} in all)` : "") });
         }
-        if (layout.length || badgeDebt.length) {
-            const kinds = [layout.length ? "layout" : "", badgeDebt.length ? "duplicate badges" : ""].filter(Boolean).join(" and ");
-            if (!LAYOUT_STRICT && testInfo.errors.length === 0) {
-                testInfo.annotations.push({ type: "known-debt", description: `${kinds}; see docs/testing.md, "Rendered games"` });
-                test.fail(true, `known debt: ${kinds}`);
-            }
-            expect.soft(layout, `layout problems:\n${report}`).toEqual([]);
-            expect.soft(badgeDebt, "other-player tabs that show a badge or a moderation button more than once").toEqual([]);
-        }
+        expect.soft(layout, `layout problems:\n${report}`).toEqual([]);
+        expect.soft(badgeDebt, "other-player tabs that show a badge or a moderation button more than once").toEqual([]);
     });
 }

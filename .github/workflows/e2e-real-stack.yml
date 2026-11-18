@@ -5,8 +5,8 @@ name: Real-stack E2E
 # this commit and started as an isolated self-host instance, then
 # - the API suite plays every version and player count to the end and
 #   probes the rules with illegal moves (test:e2e:api);
-# - the rendered games watch a 2-player game per version from a desktop and
-#   a phone seat in Chromium (known layout debt shows as expected failures).
+# - the Chromium suite creates a room through the lobby and runs complete
+#   two-player games with desktop clicks and phone taps for token moves.
 # The Frontend Tests workflow covers the same specs offline on the fake
 # stack, which only checks the client against tests/fixtures/engine.mjs;
 # this one is what notices a server change that breaks the rules or the
@@ -99,6 +99,7 @@ jobs:
         working-directory: ./client
         run: pnpm exec playwright test --project=e2e-ui-chromium --output=test-results/real-ui
         env:
+          E2E_UI_TURNS: 'all'
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/real-ui
 
       - name: Stop the instance

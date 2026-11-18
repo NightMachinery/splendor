@@ -126,34 +126,10 @@ viewport and at 360x740. Two probes (`tests/util/layout.ts`):
 - **covered controls**: any button, counter or card in an open modal whose
   centre point belongs to another element, so a tap there lands elsewhere.
 
-Some pages fail today on phones. The responsive redesign is a later phase, so
-those page and viewport pairs are listed as **known layout debt** in
-`KNOWN_DEBT` in `tests/layout.spec.ts`. They still run, and a failure there
-becomes an **expected failure** (Playwright's `test.fail`, shown as a passed
-expected-fail) with a `known-layout-debt` annotation. Any pair not on the list
-must pass. When a pair starts passing, remove it from the list.
-`PW_LAYOUT_STRICT=1` turns all of them back into hard failures.
-
-The current known layout debt, as of the last run:
-
-- Desktop: the lobby. The sessions table is about 1400 px wide in a 1280 px
-  viewport.
-- Phones (Pixel 7 and 360x740): the title page and the login page have no
-  `<meta name="viewport">`, so phones render them 980 px wide and scale them
-  down.
-- Phones: the turn modals (your turn, take tokens, put back tokens, buy a
-  card, payment, reserve a card). The board chrome (the player inventory, the
-  other players, the top bar and the history) is stacked above `.modal`, so it
-  covers the modal's buttons, counters and cards.
-- Phones: the Orient modals in `tests/modals-orient.spec.ts` (choose a
-  satchel colour, cascade, reserve a noble), and the real-click case in
-  `tests/ui-turns.spec.ts`, for the same reason: a real tap hits the board
-  chrome.
-- WebKit: every result. Nobody has seen a WebKit run yet (see below), so a
-  WebKit failure is recorded as debt rather than a red build.
-
-The mobile boards themselves (Orient, Cities, Trading Posts) and the lobby on
-phones pass the overflow check.
+Chromium runs these checks on desktop, Pixel 7 and 360x740. The turn
+modal tests also exercise real clicks. The suite treats unverified WebKit
+geometry as expected debt. Set `PW_LAYOUT_STRICT=1` to require those
+checks to pass as well.
 
 ## The full-stack suites
 
@@ -234,45 +210,13 @@ Specs:
     the board's LS session poll failing (406, then 400) once the LS has
     deleted the finished session;
   - at the end both seats show the game-over modal, "VICTORY" only for the
-    winners and "GAME OVER" for everyone else, the modal names every winner,
-    and the LS has deleted the session. The modal may name a winner by
-    display name or by username: today it shows usernames (`gameover.js`
-    prints `p.name`), and the redesign is to show display names. A
-    `gameover-names` annotation says which one each seat showed. Once the
-    redesign lands, require the display name here;
-
-  Two kinds of **known debt** are recorded and reported without counting as
-  a plain failure:
-  - layout: each seat is probed on its own turn, while its "your turn"
-    modal is open: first on its first turn, then on its first turn after
-    every `E2E_LAYOUT_EVERY` more turns (in a 2-player game with the default
-    10, the phone at turns 1, 11, 21, ... and the desktop at 2, 12, 22, ...).
-    A probe lists the elements that reach past the viewport and the controls
-    of the open turn modal (`TURN_UI` in the spec, `.modal.show` today) that
-    something else covers (`layout` annotation, `layout.json`, and a
-    `layout-probes` annotation with the turns probed). A seat that is to move
-    but shows no open modal fails the test outright: its probe would see
-    nothing. The redesign is the next phase. Today, on the phone, the
-    PURCHASE and RESERVE buttons of the your-turn modal (RESERVE only in
-    Cities with nobles) are covered by the board chrome (tokens, the player
-    inventory, card images) at every probe in Orient, Cities and Cities with
-    nobles; the Trading Posts board and the desktop seat pass. Probing only
-    every tenth turn used to land on the desktop seat's turns alone, which
-    hid this;
-  - duplicate badges: whenever the DOM is compared, an other-player tab must
-    not show a badge (OWNER, MOD, OBSERVER) or a moderation button more than
-    once (`duplicate-badges` annotation). Today it always does:
-    `updateOtherPlayerInfo` in `client/src/scripts/game.js` looks up the
-    badge row by the class `game-player-badges` and the button row by
-    `game-player-mod-controls`, but creates both rows without those classes,
-    so every render appends another pair (6 OWNER badges by turn 5, one more
-    per render).
-
-  A finding turns the test into an expected failure (`known-debt`
-  annotation; the list reporter prints a cross, the summary counts it as
-  passed), but only when every other check passed. `PW_LAYOUT_STRICT=1`
-  makes it a plain failure. When the badge bug is fixed and no layout
-  finding remains, the tests pass outright.
+    winners and "GAME OVER" for everyone else, the modal names every winner
+    by display name, and the LS has deleted the session;
+  - on its first turn and about every `E2E_LAYOUT_EVERY` turns after
+    that, each seat has an open turn modal with reachable controls and no
+    horizontal overflow. Failures attach `layout.json`. The
+    `layout-probes` annotation lists the turns checked;
+  - the opponent panel shows each badge and moderation button once.
 
   Full-page screenshots of both seats at the start (the desktop seat's
   turn), at the first phone turn from turn `E2E_MID_TURN` on (so the phone's
@@ -283,6 +227,12 @@ Specs:
   `mobile-game-over.png`), attached to the HTML report, and listed in a
   `screenshots` annotation. They check nothing: a capture that times out is
   noted in a `screenshot-failed` annotation and does not fail the game.
+
+- `tests/e2e/two-player-lobby.spec.ts` starts with two fresh browser sessions.
+  The phone host creates an Orient room and launches it as soon as the
+  desktop guest joins. Both enter the board and take one turn through the
+  dialogs. The test checks that each seat sees one opponent and that the
+  server started with four tokens per ordinary color.
 
 Every game attaches `moves.log`; a failed one also attaches `state.json`,
 `state-before.json` and a screenshot.
@@ -412,12 +362,9 @@ Full-stack knobs:
   `BASE_ORIENT_TRADE_ROUTES`.
 - `E2E_PLAYERS` (default `2,3,4`): player counts for the API games.
 - `E2E_SEEDS` (default 2): whole API games per version and player count.
-- `E2E_UI_TURNS` (default `off`): which seats of a rendered game play their
-  token turns through the board's modals instead of the API. `off` none,
-  `desktop` the desktop seat, `all` both seats with real clicks (expected to
-  fail on the phone while the turn modals are covered, see the known layout
-  debt), `force` both seats with clicks dispatched straight to the controls
-  (checks the request bodies despite the covered layout).
+- `E2E_UI_TURNS` (default `off`): which seats play token turns through the
+  board. `desktop` uses desktop clicks, `all` uses desktop clicks and
+  phone taps, and `force` dispatches clicks directly for diagnostics.
 - `E2E_LAYOUT_EVERY` (default 10): in a rendered game, probe each seat's
   layout on its own turn about every N turns (see "Rendered games" above);
   0 turns the probes off.
