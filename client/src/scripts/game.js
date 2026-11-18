@@ -2,7 +2,7 @@ import { SETTINGS, createLongPoll, fetchWithTimeout, LS_HOLDS_REQUESTS } from ".
 import { startTurn, verifyNoModals, performFollowUpAction, showNextModal } from "./modals/modals.js";
 import { animateMoveToken } from "./animation/tokens";
 import { moveCardFromDeck, moveCard, moveCardReserved } from "./animation/cards";
-import { refreshHistoryNames, writeUpdate } from "./history";
+import { refreshHistoryNames, updateHistory } from "./history";
 import { runDelayed } from "./animation/utils";
 import { showError } from "./notify.js";
 import { initGameOver } from "./modals/gameover.js";
@@ -417,11 +417,9 @@ const updateNoblesBoard = async (cards) => {
     });
 };
 
-// last state that rendered successfully, and the state being (or last) rendered
-let renderedState = null;
+// The state being (or last) rendered.
 let currentState = null;
-// hash of the state already written to the history panel
-let historyHash = null;
+let historyScope;
 
 // array for other updates that can be done (extensions)
 const furtherUpdates = [];
@@ -435,10 +433,7 @@ const furtherUpdates = [];
  */
 const renderGameState = (data, hash) => {
     currentState = data;
-    if(historyHash !== hash) {
-        writeUpdate(renderedState, data, displayNameFor);
-        historyHash = hash;
-    }
+    updateHistory(historyScope, data, hash, displayNameFor);
 
     // tokens update
     const tokenMap = data.tokens;
@@ -489,7 +484,6 @@ const renderGameState = (data, hash) => {
     refreshPurchasePayment();
     refreshReserveCard();
 
-    renderedState = data;
     setBoardTestHooks(data, hash);
 };
 
@@ -560,6 +554,7 @@ const beforeGameStateRequest = async () => {
     await SETTINGS.verifyCredentials();
     if(boardBooted) return;
     boardBooted = true;
+    historyScope = JSON.stringify([SETTINGS.getGS_API(), getSessionId(), SETTINGS.getUsername()]);
     if(SETTINGS.migrateLinkRejected()) {
         showError("This migrate link is no longer valid, so the board uses your own account.", 8000);
     }

@@ -88,7 +88,9 @@ public class SplendorRestController {
         // serialized under the session lock, so that an action cannot change the game halfway
         return new GameStateWatcher(() -> {
             synchronized (session) {
-                return SplendorTypeAdapter.newClientGson().toJson(session.getGame());
+                JsonObject state = SplendorTypeAdapter.newClientGson().toJsonTree(session.getGame()).getAsJsonObject();
+                state.addProperty("gameInstanceId", session.getGameInstanceId().toString());
+                return state.toString();
             }
         }, longPollTimeout, maxHeldPollsPerGame);
     }

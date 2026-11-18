@@ -2,6 +2,7 @@ package ca.hexanome04.splendorgame.model;
 
 import ca.hexanome04.splendorgame.model.gameversions.Game;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Represent a game session for a Splendor game.
@@ -10,6 +11,7 @@ public class GameSession {
     private final String sessionId;
     private boolean launched;
     private Game game;
+    private UUID gameInstanceId;
     private String creatorUsername;
     private String sessionName;
 
@@ -53,6 +55,16 @@ public class GameSession {
      */
     public void setGame(Game game) {
         this.game = game;
+        this.gameInstanceId = UUID.randomUUID();
+    }
+
+    /**
+     * Identifies the current game within this session.
+     *
+     * @return the identifier, replaced whenever a new game starts
+     */
+    public UUID getGameInstanceId() {
+        return gameInstanceId;
     }
 
     /**

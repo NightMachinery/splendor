@@ -101,6 +101,52 @@ test("history opens revealed cards and keeps their original details after they a
     expect(backend.actions).toHaveLength(0);
 });
 
+test("history and its card details survive a reload and clear when the game restarts", async ({ page, hasTouch }) => {
+    const game = createBasicGame();
+    const state = () => ({ ...game, gameInstanceId: "first-game" });
+    const backend = await mockGameState(page, state());
+    await mockGetUsername(page, "spectator");
+    await page.goto("/gameboard/?sessionId=123");
+    await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");
+
+    const history = page.getByRole("region", { name: "Turn history" });
+    const openHistory = page.getByRole("button", { name: "History", exact: true });
+    const headings = history.locator(".event-name");
+    const card = history.getByRole("button", { name: /Inspect tier 1 Orient card/ });
+    game.getPlayer("linus").reservedCards.push(game.tier1OrientDeck.visibleCards.pop()!);
+    game.tier1OrientDeck.addOrReplace(realCard("097"));
+    game.setTurnCounter(1);
+    backend.setGame(state());
+    await activate(openHistory, hasTouch);
+    await expect(headings).toHaveText(["linus’s turn", "maex’s turn"]);
+    await expect(card).toHaveCount(1);
+
+    await page.reload();
+    await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");
+    await activate(openHistory, hasTouch);
+    await expect(headings).toHaveText(["linus’s turn", "maex’s turn"]);
+    await activate(card, hasTouch);
+    const inspector = page.getByRole("dialog", { name: "Tier 1 Orient card" });
+    await expect(inspector).toContainText("Discard this card when you spend either");
+    await activate(inspector.getByRole("button", { name: "Close" }), hasTouch);
+
+    await page.goto("about:blank");
+    game.getPlayer("maex").tokens.setCount(TokenType.Red, 2);
+    game.setTurnCounter(0);
+    backend.setGame(state());
+    await page.goto("/gameboard/?sessionId=123");
+    await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");
+    await activate(openHistory, hasTouch);
+    await expect(headings).toHaveText(["linus’s turn", "maex’s turn", "linus’s turn"]);
+    await expect(history.locator(".token-event")).toHaveText("Took 2 red");
+    await expect(card).toHaveCount(1);
+
+    backend.setGame({ ...createBasicGame(), gameInstanceId: "restarted-game" });
+    await expect(headings).toHaveText(["linus’s turn"]);
+    await expect(card).toHaveCount(0);
+    await expect(history.locator(".token-event")).toHaveCount(0);
+});
+
 test("purchase suggests the reduced cost and submits an edited payment", async ({ page, hasTouch }) => {
     const game = createBasicGame();
     game.getPlayer("linus").reservedCards.push(realCard("05"));

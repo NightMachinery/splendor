@@ -11,6 +11,8 @@ board, including when a display name update arrives during play.
 Token changes show gem colors and counts next to the icons and wrap on phones.
 Tap a revealed development card in History to see its printed cost and effects,
 even after the card leaves the board.
+Reloading the same tab restores the current game's observed turns and card
+details. Restarting a game starts a fresh History.
 
 Tap a face-up development card or one of your reserved cards to inspect
 its art, costs, bonuses and effects. Purchase, reserve and cascade choices

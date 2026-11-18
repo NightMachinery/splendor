@@ -186,6 +186,12 @@ user.
   player's password is a BCrypt hash of their token, so the grant needs the
   token anyway. These tokens expire after 600 seconds and live in memory.
 
+### History storage
+
+The board keeps the current game's observed turns and last visible state in
+tab-scoped browser storage. The saved History is scoped to the game service,
+session, game instance and signed-in player.
+
 ## What remains
 
 These are known and not fixed yet, roughly in order of importance:

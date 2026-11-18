@@ -45,41 +45,16 @@ export const cardsDiff = (oldCards: any[], newCards: any[]): [Card[], Card[], Ca
     return [added, removed, changed];
 };
 
-export const writeCardUpdate = (prefix: string, cards: Card[], imagePath: string, suffix?: Node) => {
-    if(cards.length === 0) return;
-
-    const tNode = (document.querySelector("#history-card-template") as HTMLTemplateElement)
-                   .content.cloneNode(true) as HTMLDivElement;
-    tNode.querySelector(".prefix").textContent = prefix;
-    if(suffix) tNode.querySelector(".suffix").append(suffix);
-    const imgContainer = tNode.querySelector(".content");
-    cards.forEach(c => {
-        const img = document.createElement("img");
-        img.setAttribute("src", `/images/${imagePath}/${c.id}.jpg`);
-        img.alt = "";
-        if(imagePath === "development-cards") {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "history-card";
-            button.setAttribute("card-id", c.id);
-            button.append(img);
-            setCardInspectTarget(button, c, { snapshot: true });
-            imgContainer.append(button);
-        } else {
-            imgContainer.append(img);
-        }
-    });
-
-    appendHistory(tNode.querySelector(".event"));
-};
-
-const writeSatchelUpdate = (cards: Card[]) => {
-    for (const card of cards) {
-        const tokenText = document.createElement("div");
-        tokenText.append("is now ", createToken(card.tokenType));
-        writeCardUpdate("Bonus of", [card], "development-cards", tokenText);
-    }
-};
+type TokenChange = [color: string, amount: number];
+type Entry =
+    | { type: "cards"; prefix: string; cards: Card[]; imagePath: string; bonusColor?: string }
+    | { type: "tokens"; verb: string; tokens: TokenChange[] }
+    | { type: "text"; text: string };
+type Heading =
+    | { type: "turn"; username: string }
+    | { type: "finished" }
+    | { type: "winners"; usernames: string[] };
+type Section = { heading: Heading; entries: Entry[] };
 
 const createToken = (color: string, amount?: number): HTMLElement => {
     const template = document.querySelector<HTMLTemplateElement>("#history-token-template");
@@ -90,31 +65,68 @@ const createToken = (color: string, amount?: number): HTMLElement => {
     return token;
 };
 
-/**
- * Check if tokens changed between state, write update if yes.
- * @param oldTokens 
- * @param newTokens 
- */
-const checkTokens = (oldTokens: Record<string, number>, newTokens: Record<string, number>) => {
-    const taken: HTMLElement[] = [];
-    const returned: HTMLElement[] = [];
+const renderCards = ({ prefix, cards, imagePath, bonusColor }: Extract<Entry, { type: "cards" }>): Element => {
+    const template = document.querySelector<HTMLTemplateElement>("#history-card-template");
+    const entry = template.content.firstElementChild.cloneNode(true) as HTMLElement;
+    entry.querySelector(".prefix").textContent = prefix;
+    if(bonusColor) entry.querySelector(".suffix").append("is now ", createToken(bonusColor));
+    const images = entry.querySelector(".content");
+    for (const card of cards) {
+        const img = document.createElement("img");
+        img.src = `/images/${imagePath}/${encodeURIComponent(card.id)}.jpg`;
+        img.alt = "";
+        if(imagePath === "development-cards") {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "history-card";
+            button.setAttribute("card-id", card.id);
+            button.append(img);
+            setCardInspectTarget(button, card, { snapshot: true });
+            images.append(button);
+        } else {
+            images.append(img);
+        }
+    }
+    return entry;
+};
 
+const renderEntry = (entry: Entry): Element => {
+    if(entry.type === "cards") return renderCards(entry);
+    const node = document.createElement("div");
+    if(entry.type === "tokens") {
+        node.className = "event token-event";
+        node.append(`${entry.verb} `);
+        entry.tokens.forEach(([color, amount], index) => {
+            if(index > 0) node.append(", ");
+            node.append(createToken(color, amount));
+        });
+    } else {
+        node.className = "event card-event";
+        node.textContent = entry.text;
+    }
+    return node;
+};
+
+export const writeCardUpdate = (prefix: string, cards: Card[], imagePath: string, bonusColor?: string) => {
+    if(cards.length) appendHistory({ type: "cards", prefix, cards, imagePath, bonusColor });
+};
+
+const writeSatchelUpdate = (cards: Card[]) => {
+    for (const card of cards) {
+        writeCardUpdate("Bonus of", [card], "development-cards", card.tokenType);
+    }
+};
+
+const checkTokens = (oldTokens: Record<string, number>, newTokens: Record<string, number>) => {
+    const taken: TokenChange[] = [];
+    const returned: TokenChange[] = [];
     for (const [color, count] of Object.entries(oldTokens)) {
         const change = newTokens[color] - count;
-        if(change > 0) taken.push(createToken(color, change));
-        if(change < 0) returned.push(createToken(color, -change));
+        if(change > 0) taken.push([color, change]);
+        if(change < 0) returned.push([color, -change]);
     }
-
-    for (const [verb, tokens] of [["Took", taken], ["Returned", returned]] as const) {
-        if(tokens.length === 0) continue;
-        const entry = document.createElement("div");
-        entry.append(`${verb} `);
-        tokens.forEach((token, index) => {
-            if(index > 0) entry.append(", ");
-            entry.append(token);
-        });
-        appendHistory(entry, "token-event");
-    }
+    if(taken.length) appendHistory({ type: "tokens", verb: "Took", tokens: taken });
+    if(returned.length) appendHistory({ type: "tokens", verb: "Returned", tokens: returned });
 };
 
 const drawer = document.querySelector<HTMLElement>("#history-events");
@@ -147,74 +159,52 @@ resize.observe(historyContainer);
 resize.observe(drawer);
 
 type DisplayNameFor = (username: string) => string;
-type FormatHeading = (displayNameFor: DisplayNameFor) => string;
-const namedHeadings = new Map<Element, FormatHeading>();
+const sections: Section[] = [];
 
-const setNamedHeading = (event: Element, displayNameFor: DisplayNameFor, format: FormatHeading): void => {
-    const heading = event.querySelector(".event-name");
-    heading.textContent = format(displayNameFor);
-    namedHeadings.set(heading, format);
+const headingText = (heading: Heading, displayNameFor: DisplayNameFor): string => {
+    if(heading.type === "turn") return `${displayNameFor(heading.username)}’s turn`;
+    if(heading.type === "finished") return "The game has ended.";
+    const names = heading.usernames.map(displayNameFor);
+    if(names.length === 1) return `🎉 ${names[0]} is the winner! 🎉`;
+    return `🎉 ${names.join(names.length === 2 ? " and " : ", ")} are the winners! 🎉`;
 };
 
 export const refreshHistoryNames = (displayNameFor: DisplayNameFor): void => {
-    for (const [heading, format] of namedHeadings) {
-        const text = format(displayNameFor);
-        if(heading.textContent !== text) heading.textContent = text;
-    }
+    sections.forEach(({ heading }, index) => {
+        const node = historyContainer.children[index].querySelector(".event-name");
+        const text = headingText(heading, displayNameFor);
+        if(node.textContent !== text) node.textContent = text;
+    });
 };
 
-const startEvent = (username: string, displayNameFor: DisplayNameFor): void => {
-    const tNode = (document.querySelector("#history-event-template") as HTMLTemplateElement)
-                   .content.cloneNode(true) as HTMLDivElement;
-    setNamedHeading(tNode, displayNameFor, nameFor => `${nameFor(username)}’s turn`);
-
-    historyContainer.appendChild(tNode);
+const appendSection = (section: Section, displayNameFor: DisplayNameFor): void => {
+    const template = document.querySelector<HTMLTemplateElement>("#history-event-template");
+    const node = template.content.firstElementChild.cloneNode(true) as HTMLElement;
+    node.querySelector(".event-name").textContent = headingText(section.heading, displayNameFor);
+    node.querySelector(".event-content").append(...section.entries.map(renderEntry));
+    historyContainer.append(node);
+    sections.push(section);
 };
 
-const appendHistory = (entry: Element, ...classes: string[]): void => {
-    const lastEventContainer = historyContainer.querySelector(".event-container:last-child");
-    if(!lastEventContainer) {
-        console.log("append history called but no event has been made");
-        return;
-    }
-
-    entry.classList.add("event", ...classes);
-    lastEventContainer.querySelector(".event-content").appendChild(entry);
+const appendHistory = (entry: Entry): void => {
+    const section = sections.at(-1);
+    if(!section) return;
+    historyContainer.lastElementChild.querySelector(".event-content").append(renderEntry(entry));
+    section.entries.push(entry);
 };
 
-/**
- * Writes out who's turn it is, only if the current player has changed.
- * @param last 
- * @param current 
- */
 const writeCurrentTurn = (last: any, current: any, displayNameFor: DisplayNameFor): void => {
-    if(current.gameOver) {
-        return;
-    }
-
-    if(!last || current.players[current.turnCounter].name !== last.players[last.turnCounter].name) {
-        startEvent(current.players[current.turnCounter].name, displayNameFor);
+    if(current.gameOver) return;
+    const username = current.players[current.turnCounter].name;
+    if(username !== last?.players[last.turnCounter]?.name) {
+        appendSection({ heading: { type: "turn", username }, entries: [] }, displayNameFor);
     }
 };
 
 const writeGameOver = (data: any, displayNameFor: DisplayNameFor): void => {
-    const tNode = (document.querySelector("#history-event-template") as HTMLTemplateElement)
-                   .content.cloneNode(true) as HTMLDivElement;
-
-    const overNode = (document.querySelector("#history-event-template") as HTMLTemplateElement)
-                   .content.cloneNode(true) as HTMLDivElement;
-    overNode.querySelector(".event-name").textContent = "The game has ended.";
-
-    const winnerIds: string[] = data.winners.map((player: { name: string }) => player.name);
-    setNamedHeading(tNode, displayNameFor, nameFor => {
-        const names = winnerIds.map(nameFor);
-        if(names.length === 1) return `🎉 ${names[0]} is the winner! 🎉`;
-        const text = names.length == 2 ? names.join(" and ") : names.join(", ");
-        return `🎉 ${text} are the winners! 🎉`;
-    });
-
-    historyContainer.appendChild(overNode);
-    historyContainer.appendChild(tNode);
+    const usernames = data.winners.map((player: { name: string }) => player.name);
+    appendSection({ heading: { type: "finished" }, entries: [] }, displayNameFor);
+    appendSection({ heading: { type: "winners", usernames }, entries: [] }, displayNameFor);
 };
 
 const playerUpdaters = [];
@@ -227,7 +217,7 @@ export const registerGameUpdater = (func: (oldState: any, newState: any) => {}):
     gameUpdaters.push(func);
 };
 
-export const writeUpdate = (last: any, current: any, displayNameFor: DisplayNameFor): void => {
+const writeUpdate = (last: any, current: any, displayNameFor: DisplayNameFor): void => {
     if(current.gameOver && !last) {
         writeGameOver(current, displayNameFor);
     }
@@ -272,8 +262,67 @@ export const writeUpdate = (last: any, current: any, displayNameFor: DisplayName
     }
 };
 
-export const writeBasicUpdate = (text: string): void => {
-    const textNode = document.createElement("div");
-    textNode.textContent = text;
-    appendHistory(textNode, "card-event");
+export const writeBasicUpdate = (text: string): void => appendHistory({ type: "text", text });
+
+const storageKey = "splendor:history:v1";
+type Checkpoint = { scope: string; hash: string; state: any; sections: Section[] };
+let checkpoint: Checkpoint | undefined;
+let loaded = false;
+
+const clearHistory = (): void => {
+    historyContainer.replaceChildren();
+    sections.length = 0;
+    followingLatest = true;
+    checkpoint = undefined;
+};
+
+// The same renderer restores entries, including inspector targets, from plain data.
+const restoreHistory = (scope: string, current: any, displayNameFor: DisplayNameFor): void => {
+    try {
+        const raw = sessionStorage.getItem(storageKey);
+        if(!raw) return;
+        const saved: Checkpoint = JSON.parse(raw);
+        if(saved.scope !== scope || saved.state?.gameInstanceId !== current.gameInstanceId) return;
+        if(typeof saved.hash !== "string" || !Array.isArray(saved.state?.players) || !saved.sections?.length) return;
+        for (const section of saved.sections) appendSection(section, displayNameFor);
+        checkpoint = saved;
+    } catch {
+        clearHistory();
+    }
+};
+
+export const updateHistory = (scope: string, current: any, hash: string, displayNameFor: DisplayNameFor): void => {
+    if(!loaded) {
+        loaded = true;
+        restoreHistory(scope, current, displayNameFor);
+    }
+    if(checkpoint && (checkpoint.scope !== scope || checkpoint.state.gameInstanceId !== current.gameInstanceId)) {
+        clearHistory();
+    }
+    if(checkpoint?.hash === hash) return;
+
+    const count = sections.length;
+    const lastSection = sections.at(-1);
+    const lastContent = historyContainer.lastElementChild?.querySelector(".event-content");
+    const entryCount = lastSection?.entries.length ?? 0;
+    try {
+        writeUpdate(checkpoint?.state, current, displayNameFor);
+    } catch(error) {
+        // A poll may retry. Roll back any headings or entries from this update.
+        while(sections.length > count) {
+            sections.pop();
+            historyContainer.lastElementChild.remove();
+        }
+        if(lastSection) {
+            lastSection.entries.length = entryCount;
+            while(lastContent.children.length > entryCount) lastContent.lastElementChild.remove();
+        }
+        throw error;
+    }
+    checkpoint = { scope, hash, state: current, sections };
+    try {
+        sessionStorage.setItem(storageKey, JSON.stringify(checkpoint));
+    } catch {
+        // History remains readable in the live board if storage is unavailable.
+    }
 };
