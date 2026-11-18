@@ -62,25 +62,20 @@ export const writeCardUpdate = (prefix: string, cards: Card[], imagePath: string
 };
 
 const writeSatchelUpdate = (cards: Card[]) => {
-    if(cards.length === 0) return;
-    const tokenText = document.createElement("div");
-    tokenText.textContent = "is now";
-    tokenText.appendChild(createToken(cards[0].newTokenType));
-
-    writeCardUpdate("Bonus of", cards, "development-cards", tokenText.innerHTML);
+    for (const card of cards) {
+        const tokenText = document.createElement("div");
+        tokenText.append("is now ", createToken(card.newTokenType));
+        writeCardUpdate("Bonus of", [card], "development-cards", tokenText.innerHTML);
+    }
 };
 
-// token amount for showing
-const createToken = (color: string, amount: number = null) => {
-    const tNode = (document.querySelector("#history-token-template") as HTMLTemplateElement)
-                    .content.cloneNode(true) as HTMLDivElement;
-    if(amount) {
-        tNode.querySelector(".amount").textContent = amount + "";
-    }
-    const tokenImg = document.createElement("div");
-    tokenImg.classList.add(`${color.toLowerCase()}-token`, "board-token");
-    tNode.querySelector(".token-change").appendChild(tokenImg);
-    return tNode;
+const createToken = (color: string, amount?: number): HTMLElement => {
+    const template = document.querySelector<HTMLTemplateElement>("#history-token-template");
+    const token = template.content.firstElementChild.cloneNode(true) as HTMLElement;
+    const label = color.toLowerCase();
+    token.querySelector(".board-token").classList.add(`${label}-token`);
+    token.querySelector(".token-label").textContent = amount === undefined ? label : `${amount} ${label}`;
+    return token;
 };
 
 /**
@@ -88,52 +83,25 @@ const createToken = (color: string, amount: number = null) => {
  * @param oldTokens 
  * @param newTokens 
  */
-const checkTokens = (oldTokens: any, newTokens: any) => {
-    const setupDiv = (startText: string) => {
-        const t = document.createElement("div");
-        const headerText = document.createElement("div");
-        headerText.textContent = startText;
-        t.appendChild(headerText);
-        return t;
-    };
+const checkTokens = (oldTokens: Record<string, number>, newTokens: Record<string, number>) => {
+    const taken: HTMLElement[] = [];
+    const returned: HTMLElement[] = [];
 
-    // initial event content
-    const tookContent = setupDiv("Took ");
-    const putBackContent = setupDiv("Returned ");
-
-    let taken = [];
-    let putback = [];
-
-    // add comma to last
-    const addComma = (list: HTMLElement[]) => {
-        if(list.length > 0) {
-            const comma = document.createElement("div");
-            comma.textContent = ",";
-            list[list.length - 1].querySelector(".token-change").appendChild(comma);
-        }
-    };
-
-    for (const [key, value] of Object.entries(oldTokens)) {
-        if(newTokens[key] !== value) {
-            // check the delta of token count
-            const change = (newTokens[key] as number) - (value as number);
-            if(change > 0) {
-                addComma(taken);
-                taken.push(createToken(key, change));
-            } else {
-                addComma(putback);
-                putback.push(createToken(key, change * -1));
-            }
-        }
+    for (const [color, count] of Object.entries(oldTokens)) {
+        const change = newTokens[color] - count;
+        if(change > 0) taken.push(createToken(color, change));
+        if(change < 0) returned.push(createToken(color, -change));
     }
 
-    if(taken.length > 0) {
-        taken.forEach(e => tookContent.appendChild(e));
-        appendHistory(tookContent.innerHTML, "token-event");
-    }
-    if(putback.length > 0) {
-        putback.forEach(e => putBackContent.appendChild(e));
-        appendHistory(putBackContent.innerHTML, "token-event");
+    for (const [verb, tokens] of [["Took", taken], ["Returned", returned]] as const) {
+        if(tokens.length === 0) continue;
+        const entry = document.createElement("div");
+        entry.append(`${verb} `);
+        tokens.forEach((token, index) => {
+            if(index > 0) entry.append(", ");
+            entry.append(token);
+        });
+        appendHistory(entry.innerHTML, "token-event");
     }
 };
 

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { lobbySession } from "./util/backend-mock.js";
 import { mockGetUsername } from "./util/ls-mock.js";
 import { mockGameState } from "./util/server-mock.js";
-import { createBasicGame, TokenType } from "./util/game.js";
+import { createBasicGame, realCard, TokenType } from "./util/game.js";
 import { takeTokensThroughUi } from "./e2e/lib/ui-actor.js";
 
 // The full-stack rendered game (tests/e2e/rendered-game.spec.ts) plays some
@@ -125,6 +125,44 @@ test("history follows the board's display names through alias changes and a tie"
     backend.setGame(game.finish("linus", "maex"));
     await expect(page.locator("#gameover-modal .winners-text")).toHaveText("Avery & Jules and Mina <Pilot> tied as winners of the game!");
     await expect(headings).toHaveText([...turns, "The game has ended.", "🎉 Avery & Jules and Mina <Pilot> are the winners! 🎉"]);
+});
+
+test("history spells out gems taken, returned, and assigned to a satchel", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 320, height: 650 });
+    const game = createBasicGame();
+    const first = game.getPlayer("linus");
+    first.tokens.setCount(TokenType.Gold, 1);
+    const second = game.getPlayer("maex");
+    for (const color of [TokenType.Green, TokenType.White, TokenType.Blue, TokenType.Brown, TokenType.Red, TokenType.Gold]) {
+        second.tokens.setCount(color, color === TokenType.Brown ? 2 : 1);
+    }
+    const satchel = realCard("092");
+    second.devCards.push(satchel);
+    const backend = await mockGameState(page, game);
+    await mockGetUsername(page, "spectator");
+    await page.goto("/gameboard/?sessionId=123");
+    await expect(page.locator("body")).toHaveAttribute("data-splendor-ready", "1");
+    await page.getByRole("button", { name: "History", exact: true }).click();
+
+    first.tokens.setCount(TokenType.Green, 1).setCount(TokenType.White, 1).setCount(TokenType.Blue, 1).setCount(TokenType.Gold, 0);
+    backend.setGame(game.setTurnCounter(1));
+
+    const drawer = page.getByRole("region", { name: "Turn history" });
+    const changes = drawer.locator(".token-event");
+    await expect(changes).toHaveText(["Took 1 green, 1 white, 1 blue", "Returned 1 gold"]);
+
+    second.tokens.reset();
+    satchel.tokenType = TokenType.Red;
+    backend.setGame(game.setTurnCounter(0));
+
+    const longReturn = changes.last();
+    await expect(longReturn).toHaveText("Returned 1 green, 1 white, 1 blue, 2 brown, 1 red, 1 gold");
+    await expect(drawer.locator(".card-event .suffix .token-label")).toHaveText("red");
+    await expect.poll(() => drawer.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    if (isMobile) {
+        const labelTops = await longReturn.locator(".token-change").evaluateAll((tokens) => tokens.map((token) => token.getBoundingClientRect().top));
+        expect(labelTops.at(-1)).toBeGreaterThan(labelTops[0]);
+    }
 });
 
 test("returned tokens and two of a colour go through the put-back modal", async ({ page }) => {
